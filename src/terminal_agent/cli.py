@@ -15,9 +15,11 @@ from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
+from rich.table import Table
 
 from terminal_agent.core.agent import Agent
 from terminal_agent.core.config import AgentConfig
+from terminal_agent.core.session import Session
 from terminal_agent.utils.display import (
     console,
     display_welcome,
@@ -34,7 +36,10 @@ def _get_history_path() -> str:
     return str(history_dir / "history.txt")
 
 
-async def run_interactive(config: AgentConfig | None = None) -> None:
+async def run_interactive(
+    config: AgentConfig | None = None,
+    resume_session_id: str | None = None,
+) -> None:
     """Run the interactive CLI session.
     
     This is the main interactive loop that:
@@ -62,6 +67,20 @@ async def run_interactive(config: AgentConfig | None = None) -> None:
             "[dim]Set your API key: export ANTHROPIC_API_KEY=your-key-here[/dim]"
         )
         return
+
+    # Resume a previous session if requested
+    if resume_session_id:
+        try:
+            from pathlib import Path
+            session_path = Session.get_sessions_dir() / f"{resume_session_id}.json"
+            if session_path.exists():
+                agent.session = Session.load(session_path)
+                console.print(f"[green]✓ Resumed session: {resume_session_id}[/green]")
+                console.print(f"[dim]  {len(agent.session.messages)} messages loaded[/dim]")
+            else:
+                console.print(f"[yellow]Session '{resume_session_id}' not found. Starting new session.[/yellow]")
+        except Exception as e:
+            console.print(f"[yellow]Could not resume session: {e}. Starting new session.[/yellow]")
 
     # Set up prompt with history
     prompt_session: PromptSession = PromptSession(
@@ -131,17 +150,21 @@ def _handle_slash_command(command: str, agent: Agent, config: AgentConfig) -> bo
     elif cmd == "/help":
         help_text = Text()
         help_text.append("/help", style="bold cyan")
-        help_text.append("       — Show this help message\n")
+        help_text.append("        — Show this help message\n")
         help_text.append("/clear", style="bold cyan")
-        help_text.append("      — Clear conversation history\n")
+        help_text.append("       — Clear conversation history\n")
         help_text.append("/cost", style="bold cyan")
-        help_text.append("       — Show token usage and estimated cost\n")
+        help_text.append("        — Show token usage and estimated cost\n")
         help_text.append("/status", style="bold cyan")
-        help_text.append("     — Show current session status\n")
+        help_text.append("      — Show current session status\n")
         help_text.append("/model", style="bold cyan")
-        help_text.append("      — Show current model info\n")
+        help_text.append("       — Show current model info\n")
+        help_text.append("/save", style="bold cyan")
+        help_text.append("        — Save current session\n")
+        help_text.append("/sessions", style="bold cyan")
+        help_text.append("    — List saved sessions\n")
         help_text.append("/exit", style="bold cyan")
-        help_text.append("       — Exit the agent")
+        help_text.append("        — Exit the agent")
         console.print(Panel(help_text, title="📖 Commands", border_style="cyan"))
 
     elif cmd == "/clear":
@@ -175,6 +198,34 @@ def _handle_slash_command(command: str, agent: Agent, config: AgentConfig) -> bo
         console.print(
             Panel("\n".join(model_info), title="🤖 Model Info", border_style="magenta")
         )
+
+    elif cmd == "/save":
+        try:
+            agent.session.auto_save()
+            console.print(f"[green]✓ Session saved: {agent.session.session_id}[/green]")
+            console.print(f"[dim]  Path: {agent.session.get_save_path()}[/dim]")
+        except Exception as e:
+            console.print(f"[red]Failed to save session: {e}[/red]")
+
+    elif cmd == "/sessions":
+        sessions = Session.list_sessions()
+        if not sessions:
+            console.print("[dim]No saved sessions found.[/dim]")
+        else:
+            table = Table(title="📋 Saved Sessions", border_style="blue")
+            table.add_column("Session ID", style="cyan")
+            table.add_column("Created", style="green")
+            table.add_column("Directory", style="white")
+            table.add_column("Messages", style="yellow", justify="right")
+            for s in sessions[:10]:  # Show last 10
+                table.add_row(
+                    s["session_id"],
+                    s["created_at"][:19] if s["created_at"] != "unknown" else "—",
+                    s["working_directory"],
+                    str(s["message_count"]),
+                )
+            console.print(table)
+            console.print("[dim]Resume with: agent --resume <session_id>[/dim]")
 
     else:
         console.print(f"[yellow]Unknown command: {cmd}. Type /help for available commands.[/yellow]")

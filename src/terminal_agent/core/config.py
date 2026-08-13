@@ -39,9 +39,13 @@ class AgentConfig(BaseSettings):
     )
 
     # --- Model Settings ---
-    provider: str = Field(default="anthropic", description="LLM provider: anthropic, openai, google")
+    provider: str = Field(default="anthropic", description="LLM provider: anthropic, openai, google, nvidia")
     model_name: str = Field(default="claude-sonnet-4-20250514", description="Model identifier")
     max_tokens: int = Field(default=8192, description="Max output tokens per LLM response")
+    nvidia_base_url: str = Field(
+        default="https://integrate.api.nvidia.com/v1",
+        description="NVIDIA NIM API base URL",
+    )
 
     # --- Agent Settings ---
     max_iterations: int = Field(default=25, description="Max tool-use loops per user turn")
@@ -87,8 +91,13 @@ class AgentConfig(BaseSettings):
     anthropic_api_key: Optional[str] = Field(default=None)
     openai_api_key: Optional[str] = Field(default=None)
     google_api_key: Optional[str] = Field(default=None)
+    nvidia_api_key: Optional[str] = Field(default=None)
 
     def __init__(self, **kwargs):
+        # Load .env into os.environ FIRST so API key fallbacks work
+        from dotenv import load_dotenv
+        load_dotenv(override=False)
+        
         super().__init__(**kwargs)
         # API keys use standard env var names (no AGENT_ prefix)
         # Override from environment if not set via AGENT_ prefix
@@ -98,6 +107,8 @@ class AgentConfig(BaseSettings):
             self.openai_api_key = os.environ.get("OPENAI_API_KEY")
         if not self.google_api_key:
             self.google_api_key = os.environ.get("GOOGLE_API_KEY")
+        if not self.nvidia_api_key:
+            self.nvidia_api_key = os.environ.get("NVIDIA_API_KEY")
 
     def get_api_key(self) -> str | None:
         """Get the API key for the configured provider."""
@@ -105,14 +116,17 @@ class AgentConfig(BaseSettings):
             "anthropic": self.anthropic_api_key,
             "openai": self.openai_api_key,
             "google": self.google_api_key,
+            "nvidia": self.nvidia_api_key,
         }
         return key_map.get(self.provider)
 
     def validate_api_key(self) -> None:
-        """Raise ValueError if the API key for the configured provider is missing."""
+        """Raise ValueError if the API key for the configured provider is missing or a placeholder."""
         key = self.get_api_key()
-        if not key:
+        if not key or key.startswith("your-") or "your-api-key" in key or "your-nvidia-api-key" in key or len(key) < 15:
             raise ValueError(
-                f"No API key found for provider '{self.provider}'. "
-                f"Set the {self.provider.upper()}_API_KEY environment variable."
+                f"No valid API key found for provider '{self.provider}'.\n"
+                f"Your environment or .env has a placeholder key: '{key}'.\n"
+                f"Please set your real API key via environment variable: export {self.provider.upper()}_API_KEY=nvapi-...\n"
+                f"or update your .env file with {self.provider.upper()}_API_KEY=nvapi-..."
             )

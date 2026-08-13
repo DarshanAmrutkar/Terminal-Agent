@@ -31,7 +31,7 @@ console = Console()
 def main(
     provider: Optional[str] = typer.Option(
         None, "--provider", "-p",
-        help="LLM provider: anthropic, openai, google",
+        help="LLM provider: anthropic, openai, google, nvidia",
     ),
     model: Optional[str] = typer.Option(
         None, "--model", "-m",
@@ -52,6 +52,10 @@ def main(
     yolo: bool = typer.Option(
         False, "--yolo",
         help="Auto-approve all commands (equivalent to --permission yolo)",
+    ),
+    resume: Optional[str] = typer.Option(
+        None, "--resume", "-r",
+        help="Resume a previous session by ID (use /sessions to list)",
     ),
 ) -> None:
     """Start an interactive Terminal Agent session."""
@@ -80,7 +84,7 @@ def main(
     from terminal_agent.cli import run_interactive
 
     try:
-        asyncio.run(run_interactive(config))
+        asyncio.run(run_interactive(config, resume_session_id=resume))
     except KeyboardInterrupt:
         console.print("\n[dim]Goodbye![/dim]")
 

@@ -139,11 +139,89 @@ class Session:
             ],
         }
 
+    def get_save_path(self) -> Path:
+        return self.get_sessions_dir() / f"{self.session_id}.json"
+
+    def auto_save(self) -> None:
+        """Auto-save session to the default path."""
+        self.save(self.get_save_path())
+
     def save(self, path: Path) -> None:
         """Save session state to a JSON file."""
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)
+
+    @classmethod
+    def get_sessions_dir(cls) -> Path:
+        sessions_dir = Path.home() / ".terminal-agent" / "sessions"
+        sessions_dir.mkdir(parents=True, exist_ok=True)
+        return sessions_dir
+
+    @classmethod
+    def load(cls, path: Path) -> 'Session':
+        """Load a session from a JSON file."""
+        import json
+        from terminal_agent.llm.message import Message, Role, ToolCall, ToolResultContent
+        
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        messages = []
+        for msg_data in data.get('messages', []):
+            role = Role(msg_data['role'])
+            tool_calls = None
+            if msg_data.get('tool_calls'):
+                tool_calls = [
+                    ToolCall(id=tc['id'], name=tc['name'], arguments=tc['arguments'])
+                    for tc in msg_data['tool_calls']
+                ]
+            tool_results = None
+            if msg_data.get('tool_results'):
+                tool_results = [
+                    ToolResultContent(
+                        tool_call_id=tr['tool_call_id'],
+                        output=tr['output'],
+                        is_error=tr.get('is_error', False)
+                    )
+                    for tr in msg_data['tool_results']
+                ]
+            messages.append(Message(
+                role=role,
+                content=msg_data.get('content'),
+                tool_calls=tool_calls,
+                tool_results=tool_results,
+            ))
+        
+        session = cls(
+            working_directory=data.get('working_directory', '.'),
+            messages=messages,
+            session_id=data.get('session_id', ''),
+            total_input_tokens=data.get('total_input_tokens', 0),
+            total_output_tokens=data.get('total_output_tokens', 0),
+        )
+        return session
+
+    @classmethod
+    def list_sessions(cls) -> list[dict]:
+        """List all saved sessions with metadata."""
+        import json
+        sessions = []
+        sessions_dir = cls.get_sessions_dir()
+        for path in sorted(sessions_dir.glob('*.json'), reverse=True):
+            try:
+                with open(path, 'r') as f:
+                    data = json.load(f)
+                sessions.append({
+                    'session_id': data.get('session_id', path.stem),
+                    'created_at': data.get('created_at', 'unknown'),
+                    'working_directory': data.get('working_directory', 'unknown'),
+                    'message_count': len(data.get('messages', [])),
+                    'path': str(path),
+                })
+            except Exception:
+                continue
+        return sessions
 
     def __repr__(self) -> str:
         return (

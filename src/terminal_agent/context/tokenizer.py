@@ -25,3 +25,17 @@ def count_messages_tokens(messages: List[Dict[str, Any]], model: str = 'cl100k_b
                 
     num_tokens += 2  # every reply is primed with <im_start>assistant
     return num_tokens
+
+def count_message_tokens(message) -> int:
+    """Count tokens in a Message dataclass instance."""
+    total = 4  # message overhead
+    if message.content:
+        total += count_tokens(message.content)
+    if message.tool_calls:
+        for tc in message.tool_calls:
+            total += count_tokens(tc.name)
+            total += count_tokens(str(tc.arguments))
+    if message.tool_results:
+        for tr in message.tool_results:
+            total += count_tokens(tr.output)
+    return total

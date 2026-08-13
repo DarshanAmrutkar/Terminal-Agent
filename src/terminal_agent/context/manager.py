@@ -26,28 +26,47 @@ class ContextManager:
         return (used / max_tokens) >= self.summarization_threshold
 
     async def compact(self, llm_provider: Any) -> None:
-        """
-        Summarize older messages using the LLM to save context.
-        This is a stub for where the actual LLM call would go.
-        """
         if not self.needs_compaction():
             return
-            
-        # Example logic: keep system prompt and recent messages, summarize the middle
-        if len(self.messages) > 10:
-            system_msgs = [m for m in self.messages if m.get('role') == 'system']
-            recent_msgs = self.messages[-5:]
-            
-            # The middle messages to summarize
-            middle_msgs = [m for m in self.messages if m not in system_msgs and m not in recent_msgs]
-            
-            # Call LLM to summarize middle_msgs...
-            # summary = await llm_provider.generate_summary(middle_msgs)
-            summary = "Summary of previous interactions."
-            
-            summary_msg = {"role": "system", "content": f"Previous conversation summary: {summary}"}
-            
-            self.messages = system_msgs + [summary_msg] + recent_msgs
+        if len(self.messages) <= 8:
+            return  # Not enough messages to compact
+        
+        # Keep system message(s) and last 6 messages
+        system_msgs = [m for m in self.messages if m.get('role') == 'system']
+        recent_msgs = self.messages[-6:]
+        middle_msgs = [m for m in self.messages if m not in system_msgs and m not in recent_msgs]
+        
+        if not middle_msgs:
+            return
+        
+        # Build summarization prompt
+        summary_prompt = self._build_summary_prompt(middle_msgs)
+        
+        # Call LLM for summarization
+        from terminal_agent.llm.message import Message
+        summary_messages = [Message.user(summary_prompt)]
+        try:
+            response = await llm_provider.send(summary_messages)
+            summary_text = response.message.content or "Previous conversation summary unavailable."
+        except Exception:
+            summary_text = "Previous conversation summary unavailable."
+        
+        summary_msg = {"role": "system", "content": f"[Conversation Summary]\n{summary_text}"}
+        self.messages = system_msgs + [summary_msg] + recent_msgs
+
+    def _build_summary_prompt(self, messages: list) -> str:
+        lines = ["Summarize the following conversation concisely. Focus on:",
+                 "- What the user asked for",
+                 "- What files were read or modified", 
+                 "- What commands were run and their results",
+                 "- Key decisions made",
+                 "- Current state of the task\n"]
+        for msg in messages:
+            role = msg.get('role', 'unknown')
+            content = msg.get('content', '')
+            if content:
+                lines.append(f"{role}: {content[:500]}")
+        return "\n".join(lines)
 
     def truncate_output(self, text: str, max_chars: int) -> str:
         """Truncate text with a marker if it exceeds max_chars."""
