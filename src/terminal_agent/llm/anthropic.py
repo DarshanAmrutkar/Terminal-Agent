@@ -182,6 +182,18 @@ class AnthropicProvider(LLMProvider):
                             current_tool_call_id = None
                             current_tool_name = None
                             current_tool_input_json = ""
+                    elif event.type == "message_delta":
+                        # This event carries the real token usage for the entire request.
+                        # It is the authoritative source — far more accurate than any
+                        # client-side estimation using tiktoken.
+                        if hasattr(event, 'usage') and event.usage is not None:
+                            yield StreamEvent(
+                                type="usage",
+                                usage={
+                                    "input_tokens": getattr(event.usage, 'input_tokens', 0) or 0,
+                                    "output_tokens": getattr(event.usage, 'output_tokens', 0) or 0,
+                                },
+                            )
                     elif event.type == "message_stop":
                         yield StreamEvent(type="message_end")
                         

@@ -46,10 +46,20 @@ class Message:
 
 @dataclass
 class StreamEvent:
-    """Events emitted during streaming."""
-    type: str  # 'text_delta', 'tool_call_start', 'tool_call_delta', 'tool_call_end', 'message_end'
+    """Events emitted during streaming.
+
+    Event types:
+      - 'text_delta'      : a chunk of text from the assistant
+      - 'tool_call_start' : the LLM started a tool call (carries initial ToolCall)
+      - 'tool_call_delta' : partial JSON being accumulated for tool arguments
+      - 'tool_call_end'   : tool call is complete (carries finalized ToolCall with arguments)
+      - 'usage'           : real token counts from the API (input_tokens, output_tokens)
+      - 'message_end'     : stream has finished
+    """
+    type: str
     text: str | None = None
     tool_call: ToolCall | None = None
+    usage: dict | None = None  # e.g. {'input_tokens': 512, 'output_tokens': 128}
 
 @dataclass
 class LLMResponse:

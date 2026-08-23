@@ -31,10 +31,15 @@ def display_streaming_token(token: str):
     """Print token without newline for streaming."""
     console.print(token, end="")
 
-def display_approval_prompt(command: str) -> bool:
-    """Ask user y/n for command approval."""
-    console.print(f"\n[bold yellow]Agent wants to run command:[/bold yellow] {command}")
-    return Confirm.ask("Allow execution?", default=False)
+def display_approval_prompt(reason: str) -> bool:
+    """Ask the user to approve a tool action before it executes.
+
+    Args:
+        reason: A human-readable description of what the agent wants to do
+                (from PermissionDecision.reason).
+    """
+    console.print(f"\n[bold yellow]⚠ Approval required:[/bold yellow] {reason}")
+    return Confirm.ask("Allow this action?", default=False)
 
 def display_status_bar(model: str, tokens_used: int, max_tokens: int):
     """Show status info."""

@@ -31,7 +31,7 @@ console = Console()
 def main(
     provider: Optional[str] = typer.Option(
         None, "--provider", "-p",
-        help="LLM provider: anthropic, openai, google",
+        help="LLM provider: anthropic, nvidia, openai",
     ),
     model: Optional[str] = typer.Option(
         None, "--model", "-m",
