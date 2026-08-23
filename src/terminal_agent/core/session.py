@@ -1,4 +1,22 @@
-"""Session state and conversation history management."""
+"""Session state and conversation history management.
+
+Design note: Why no separate ContextManager?
+--------------------------------------------
+An earlier version of this module included a `context/manager.py` that maintained
+a parallel message list (as raw dicts) and a stub `compact()` method. It was never
+wired up to the actual agent loop, which used Session directly.
+
+We deleted ContextManager because:
+  1. It was dead code — nothing in the agent loop called it.
+  2. It maintained a duplicate message list in a different format (raw dicts vs.
+     typed Message dataclasses), creating a risk of the two lists diverging.
+  3. Context budget logic (does_context_need_trimming?) is a natural responsibility
+     of Session, which already owns the message list and token counts.
+
+So: context budget methods now live here, on Session. The actual trimming
+logic lives in Agent, which decides *policy* (what to drop, in what order).
+Session owns the *data*; Agent owns the *decisions about that data*.
+"""
 
 from __future__ import annotations
 
@@ -101,6 +119,35 @@ class Session:
             self.messages.append(system_msg)
         self.active_files.clear()
         self.iteration_count = 0
+
+    # ------------------------------------------------------------------
+    # Context budget
+    # ------------------------------------------------------------------
+
+    def token_usage_ratio(self, max_context_tokens: int) -> float:
+        """Return the fraction of the context budget currently used.
+
+        This is an *estimate* based on cumulative token counts tracked during
+        the session. It is approximate because:
+          - We count tokens per-response, not per full message list.
+          - The provider's token count includes system prompt overhead.
+
+        Returns a float in [0.0, inf). Values > 1.0 indicate over-budget.
+        """
+        if max_context_tokens <= 0:
+            return 0.0
+        total = self.total_input_tokens + self.total_output_tokens
+        return total / max_context_tokens
+
+    def needs_compaction(self, max_context_tokens: int, threshold: float = 0.75) -> bool:
+        """Return True when context usage exceeds the given threshold.
+
+        Args:
+            max_context_tokens: The provider's context window size.
+            threshold: Fraction of window (0.0–1.0) at which to trigger compaction.
+                       Default 0.75 means "compact when 75% full".
+        """
+        return self.token_usage_ratio(max_context_tokens) >= threshold
 
     def to_dict(self) -> dict:
         """Serialize session to a dictionary for persistence."""
