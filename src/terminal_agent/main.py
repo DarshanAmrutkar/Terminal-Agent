@@ -29,9 +29,13 @@ console = Console()
 
 @app.command()
 def main(
+    profile: Optional[str] = typer.Option(
+        None, "--profile", "-P",
+        help="Model profile preset (e.g., sonnet, haiku, nemotron, gpt4o, deepseek)",
+    ),
     provider: Optional[str] = typer.Option(
         None, "--provider", "-p",
-        help="LLM provider: anthropic, nvidia, openai",
+        help="LLM provider: anthropic, nvidia, openai, openrouter",
     ),
     model: Optional[str] = typer.Option(
         None, "--model", "-m",
@@ -57,6 +61,8 @@ def main(
     """Start an interactive Terminal Agent session."""
     # Build config overrides from CLI arguments
     overrides = {}
+    if profile:
+        overrides["profile"] = profile
     if provider:
         overrides["provider"] = provider
     if model:

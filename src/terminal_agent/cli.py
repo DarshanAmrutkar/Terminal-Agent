@@ -18,6 +18,7 @@ from rich.text import Text
 
 from terminal_agent.core.agent import Agent
 from terminal_agent.core.config import AgentConfig
+from terminal_agent.llm.profiles import list_profiles
 from terminal_agent.utils.display import (
     console,
     display_welcome,
@@ -131,17 +132,19 @@ def _handle_slash_command(command: str, agent: Agent, config: AgentConfig) -> bo
     elif cmd == "/help":
         help_text = Text()
         help_text.append("/help", style="bold cyan")
-        help_text.append("       — Show this help message\n")
+        help_text.append("             — Show this help message\n")
         help_text.append("/clear", style="bold cyan")
-        help_text.append("      — Clear conversation history\n")
+        help_text.append("            — Clear conversation history\n")
         help_text.append("/cost", style="bold cyan")
-        help_text.append("       — Show token usage and estimated cost\n")
+        help_text.append("             — Show token usage and estimated cost\n")
         help_text.append("/status", style="bold cyan")
-        help_text.append("     — Show current session status\n")
+        help_text.append("           — Show current session status\n")
         help_text.append("/model", style="bold cyan")
-        help_text.append("      — Show current model info\n")
+        help_text.append("            — Show active model & list available profiles\n")
+        help_text.append("/model <name>", style="bold cyan")
+        help_text.append("     — Switch active model profile (e.g. /model deepseek)\n")
         help_text.append("/exit", style="bold cyan")
-        help_text.append("       — Exit the agent")
+        help_text.append("             — Exit the agent")
         console.print(Panel(help_text, title="📖 Commands", border_style="cyan"))
 
     elif cmd == "/clear":
@@ -164,17 +167,41 @@ def _handle_slash_command(command: str, agent: Agent, config: AgentConfig) -> bo
             Panel("\n".join(status_lines), title="📊 Session Status", border_style="blue")
         )
 
-    elif cmd == "/model":
-        model_info = [
-            f"Provider: {config.provider}",
-            f"Model: {config.model_name}",
-            f"Max Output Tokens: {config.max_tokens}",
-            f"Max Context: {config.max_context_tokens:,}",
-            f"Permission Mode: {config.permission_mode.value}",
-        ]
-        console.print(
-            Panel("\n".join(model_info), title="🤖 Model Info", border_style="magenta")
-        )
+    elif cmd in ("/model", "/profile"):
+        if args:
+            # Switch profile
+            target_profile = args.strip()
+            try:
+                activated = agent.switch_model_profile(target_profile)
+                console.print(
+                    f"[bold green]✓ Switched to profile '{activated.name}'[/bold green] "
+                    f"([dim]{activated.provider} / {activated.model_name}[/dim])\n"
+                )
+            except KeyError as e:
+                console.print(f"[bold red]Error:[/bold red] {e}")
+            except ValueError as e:
+                console.print(f"[bold red]Configuration Error:[/bold red] {e}")
+        else:
+            # Show current model info & list available profiles
+            active_profile_name = config.profile or config.provider
+            info_lines = [
+                f"[bold]Active Profile:[/bold] {active_profile_name}",
+                f"[bold]Provider:[/bold] {config.provider}",
+                f"[bold]Model:[/bold] {config.model_name}",
+                f"[bold]Max Output Tokens:[/bold] {config.max_tokens:,}",
+                f"[bold]Context Budget:[/bold] {config.max_context_tokens:,}",
+                "",
+                "[bold cyan]Available Profiles:[/bold cyan] (switch with `/model <name>`):",
+            ]
+            for name, prof in list_profiles().items():
+                is_active = (config.provider == prof.provider and config.model_name == prof.model_name)
+                marker = " [bold green]● (active)[/bold green]" if is_active else ""
+                desc = f" — {prof.description}" if prof.description else ""
+                info_lines.append(f"  • [bold magenta]{name}[/bold magenta] ({prof.provider} / {prof.model_name}){marker}{desc}")
+
+            console.print(
+                Panel("\n".join(info_lines), title="🤖 Model Profiles", border_style="magenta")
+            )
 
     else:
         console.print(f"[yellow]Unknown command: {cmd}. Type /help for available commands.[/yellow]")

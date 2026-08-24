@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import AsyncGenerator
 
 from terminal_agent.core.config import AgentConfig
+from terminal_agent.llm.profiles import ModelProfile, profile_registry
 from terminal_agent.core.session import Session
 from terminal_agent.llm.base import LLMProvider
 from terminal_agent.llm.anthropic import AnthropicProvider
@@ -101,14 +102,15 @@ class Agent:
         makes the provider creation logic easy to read in one place.
 
         Provider routing:
-          anthropic  → AnthropicProvider (uses Anthropic SDK directly)
-          nvidia     → OpenAICompatibleProvider (NVIDIA NIM is OpenAI-compatible)
-          openai     → OpenAICompatibleProvider (real OpenAI API)
+          anthropic   → AnthropicProvider (uses Anthropic SDK directly)
+          nvidia      → OpenAICompatibleProvider (NVIDIA NIM is OpenAI-compatible)
+          openai      → OpenAICompatibleProvider (real OpenAI API)
+          openrouter  → OpenAICompatibleProvider (OpenRouter is OpenAI-compatible)
 
-        Why is nvidia routed to OpenAICompatibleProvider?
-        NVIDIA NIM implements the OpenAI Chat Completions API spec exactly.
+        Why are nvidia/openrouter routed to OpenAICompatibleProvider?
+        They implement the OpenAI Chat Completions API spec.
         There is no meaningful difference at the HTTP level; only the base_url
-        and api_key differ. Routing both to the same provider class avoids
+        and api_key differ. Routing to the same provider class avoids
         duplication and demonstrates that the abstraction is correct.
         """
         provider = self.config.provider
@@ -121,7 +123,7 @@ class Agent:
                 max_tokens=self.config.max_tokens,
             )
 
-        if provider in ("nvidia", "openai"):
+        if provider in ("nvidia", "openai", "openrouter"):
             base_url = self.config.get_base_url()
             return OpenAICompatibleProvider(
                 model=self.config.model_name,
@@ -132,8 +134,51 @@ class Agent:
 
         raise ValueError(
             f"Unsupported provider: {provider!r}. "
-            f"Supported providers: anthropic, nvidia, openai"
+            f"Supported providers: anthropic, nvidia, openai, openrouter"
         )
+
+    def switch_model_profile(self, profile_name_or_obj: str | ModelProfile) -> ModelProfile:
+        """Switch the active LLM provider and model profile in-session.
+
+        Args:
+            profile_name_or_obj: Name of a registered profile alias or a ModelProfile instance.
+
+        Returns:
+            The activated ModelProfile.
+
+        Raises:
+            KeyError: If profile_name string is not found in the profile registry.
+            ValueError: If the required API key for the new provider is not configured.
+        """
+        if isinstance(profile_name_or_obj, str):
+            profile = profile_registry.get(profile_name_or_obj)
+        elif isinstance(profile_name_or_obj, ModelProfile):
+            profile = profile_name_or_obj
+        else:
+            raise TypeError("Expected profile name (str) or ModelProfile instance")
+
+        # Validate that the API key for the target provider is present
+        self.config.validate_api_key(profile.provider)
+
+        # Update config fields
+        self.config.profile = profile.name
+        self.config.provider = profile.provider
+        self.config.model_name = profile.model_name
+        self.config.max_tokens = profile.max_tokens
+        self.config.max_context_tokens = profile.context_window
+        if profile.base_url:
+            if profile.provider == "nvidia":
+                self.config.nvidia_base_url = profile.base_url
+            elif profile.provider == "openai":
+                self.config.openai_base_url = profile.base_url
+            elif profile.provider == "openrouter":
+                self.config.openrouter_base_url = profile.base_url
+
+        # Recreate provider & update cost tracker
+        self.provider = self._create_provider()
+        self.cost_tracker.model_name = profile.model_name
+
+        return profile
 
     def _import_tool_modules(self) -> None:
         """Import tool modules to trigger @register_tool decorators.
