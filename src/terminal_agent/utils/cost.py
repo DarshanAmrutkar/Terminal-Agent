@@ -43,6 +43,14 @@ class CostTracker:
         "gpt-4-turbo":                {"input": 0.010, "output": 0.030},
         "o1":                         {"input": 0.015, "output": 0.060},
         "o1-mini":                    {"input": 0.003, "output": 0.012},
+        # OpenRouter popular models
+        "anthropic/claude-3.5-sonnet":          {"input": 0.003, "output": 0.015},
+        "anthropic/claude-3.7-sonnet":          {"input": 0.003, "output": 0.015},
+        "openai/gpt-4o":                        {"input": 0.005, "output": 0.015},
+        "openai/gpt-4o-mini":                   {"input": 0.00015, "output": 0.0006},
+        "deepseek/deepseek-chat":               {"input": 0.00014, "output": 0.00028},
+        "deepseek/deepseek-r1":                 {"input": 0.00055, "output": 0.00219},
+        "meta-llama/llama-3.3-70b-instruct":    {"input": 0.00012, "output": 0.0003},
     }
 
     def __init__(self, model_name: str) -> None:

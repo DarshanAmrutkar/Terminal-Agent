@@ -84,11 +84,15 @@ class OpenAICompatibleProvider(LLMProvider):
         max_retries: int = 3,
     ) -> None:
         super().__init__(model=model, api_key=api_key, max_tokens=max_tokens)
-        self.base_url = base_url
+        # Normalize base_url (AsyncOpenAI expects endpoint root, e.g. https://api.openai.com/v1)
+        normalized_url = base_url.rstrip("/")
+        if normalized_url.endswith("/chat/completions"):
+            normalized_url = normalized_url.removesuffix("/chat/completions").rstrip("/")
+        self.base_url = normalized_url
         self.max_retries = max_retries
         self.client = AsyncOpenAI(
             api_key=api_key,
-            base_url=base_url,
+            base_url=self.base_url,
         )
 
     def count_tokens(self, text: str) -> int:
