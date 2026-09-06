@@ -27,8 +27,9 @@ app = typer.Typer(
 console = Console()
 
 
-@app.command()
+@app.callback(invoke_without_command=True)
 def main(
+    ctx: typer.Context,
     profile: Optional[str] = typer.Option(
         None, "--profile", "-P",
         help="Model profile preset (e.g., sonnet, haiku, nemotron, gpt4o, deepseek)",
@@ -59,6 +60,9 @@ def main(
     ),
 ) -> None:
     """Start an interactive Terminal Agent session."""
+    if ctx.invoked_subcommand is not None:
+        return
+
     # Build config overrides from CLI arguments
     overrides = {}
     if profile:
@@ -91,5 +95,56 @@ def main(
         console.print("\n[dim]Goodbye![/dim]")
 
 
+@app.command(name="eval")
+def eval_benchmark(
+    mock: bool = typer.Option(
+        True, "--mock/--live",
+        help="Use deterministic mock provider (zero API cost, instant offline run)",
+    ),
+    provider: Optional[str] = typer.Option(
+        None, "--provider", "-p",
+        help="LLM provider: anthropic, openai, nvidia",
+    ),
+    model: Optional[str] = typer.Option(
+        None, "--model", "-m",
+        help="Model name to evaluate",
+    ),
+    tasks: Optional[str] = typer.Option(
+        None, "--tasks", "-t",
+        help="Comma-separated task IDs to run (default: all tasks)",
+    ),
+    output_dir: str = typer.Option(
+        "evals/results", "--output-dir", "-o",
+        help="Directory to save JSON & Markdown reports",
+    ),
+) -> None:
+    """Run automated benchmark evaluations on Terminal Agent."""
+    from evals.runner import EvalRunner
+    from evals.tasks.fixtures import get_all_tasks
+
+    active_provider = "mock" if mock or not provider else provider
+    runner = EvalRunner(
+        provider=active_provider,
+        model=model,
+        output_dir=output_dir,
+    )
+
+    all_tasks = get_all_tasks()
+    if tasks:
+        selected_ids = {t.strip() for t in tasks.split(",")}
+        tasks_to_run = [t for t in all_tasks if t.task_id in selected_ids]
+    else:
+        tasks_to_run = all_tasks
+
+    if not tasks_to_run:
+        console.print("[red]No matching tasks found.[/red]")
+        raise typer.Exit(1)
+
+    report = asyncio.run(runner.run_suite(tasks_to_run))
+    if report.failed_tasks > 0:
+        raise typer.Exit(1)
+
+
 if __name__ == "__main__":
     app()
+
