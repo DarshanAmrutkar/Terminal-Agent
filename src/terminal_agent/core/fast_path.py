@@ -13,14 +13,14 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 import re
-from typing import Any, List, Optional, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 
 from terminal_agent.llm.base import LLMProvider
 from terminal_agent.llm.message import Message
 from terminal_agent.tools.search_replace import _search_replace_sync
 from terminal_agent.tools.base import resolve_safe_path
 from terminal_agent.sandbox.local import LocalRestrictedSandbox
-from terminal_agent.sandbox.base import SandboxPolicy, SandboxResult
+from terminal_agent.sandbox.base import SandboxBackend, SandboxPolicy, SandboxResult
 
 
 @dataclass
@@ -42,11 +42,13 @@ class AgentlessFastPath:
         self, 
         provider: LLMProvider, 
         working_directory: str | Path,
-        max_candidates: int = 3
+        max_candidates: int = 3,
+        sandbox_factory: Optional[Callable[[SandboxPolicy], SandboxBackend]] = None,
     ) -> None:
         self.provider = provider
         self.working_dir = Path(working_directory).resolve()
         self.max_candidates = max_candidates
+        self.sandbox_factory = sandbox_factory
 
     def localize(self, task_description: str) -> List[str]:
         """Phase 1: Identify candidate files using AST and keyword relevance."""
@@ -143,7 +145,10 @@ class AgentlessFastPath:
     async def validate(self, test_command: str) -> Tuple[bool, str]:
         """Phase 3: Verify the patch using sandboxed automated regression tests."""
         policy = SandboxPolicy(working_dir=self.working_dir, timeout_seconds=60)
-        sandbox = LocalRestrictedSandbox(policy=policy)
+        if self.sandbox_factory:
+            sandbox = self.sandbox_factory(policy)
+        else:
+            sandbox = LocalRestrictedSandbox(policy=policy)
         res: SandboxResult = await sandbox.execute(test_command)
         return res.returncode == 0, res.formatted_output
 

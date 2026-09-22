@@ -148,6 +148,39 @@ MOCK_SOLUTIONS: dict[str, dict[str, str]] = {
 }
 
 
+MOCK_QA_RESPONSES: dict[str, str] = {
+    "task_qa_01_sandboxing": (
+        "# Codebase Architecture & Tool Sandboxing\n\n"
+        "The project follows a Hexagonal architecture. Tool execution sandboxing is based on the Strategy Pattern:\n"
+        "- `SandboxBackend`: Abstract base interface in `src/terminal_agent/sandbox/base.py`.\n"
+        "- `LocalRestrictedSandbox`: In-process host execution with process containment.\n"
+        "- `DockerSandbox`: Full container isolation.\n"
+        "Security is governed by `SandboxPolicy` which invokes `sanitize_environment` to strip secrets and "
+        "`resolve_safe_path` to prevent path traversal outside working directory. Subprocesses run with stdin=DEVNULL."
+    ),
+    "task_qa_02_permissions": (
+        "# Command Permissions & Guardrails\n\n"
+        "Command execution permissions are enforced by `PermissionChecker` in `src/terminal_agent/utils/permissions.py`:\n"
+        "- `PermissionMode`: Configures safe, auto-test, and `yolo` modes.\n"
+        "- `safe_commands`: Whitelist of harmless read-only shell commands.\n"
+        "- `blocked_patterns`: Strictly blocked dangerous operations such as `rm -rf /` and format commands."
+    ),
+    "task_qa_03_prompt_caching": (
+        "# Prompt Caching Optimization\n\n"
+        "Prompt caching leverages Anthropic ephemeral cache breakpoints:\n"
+        "- `cache_control`: Marker `{\"type\": \"ephemeral\"}` placed on system prompt and tool definitions.\n"
+        "- `cost_tracker`: Computes cache read discount using `cache_read_input_tokens` at $0.30/MTok."
+    ),
+    "task_qa_04_session_persistence": (
+        "# Session Persistence Lifecycle\n\n"
+        "Sessions are managed through `SessionStore` in `src/terminal_agent/core/session_store.py`:\n"
+        "- Saved to disk via `save_session` using `to_dict` serialization.\n"
+        "- Restored via `load_session` and `from_dict`.\n"
+        "- Resumed from CLI using `agent --resume <id>` or `agent sessions`."
+    ),
+}
+
+
 class MockEvalProvider(LLMProvider):
     """Mock LLM provider that simulates realistic agent tool interactions for evaluations."""
 
@@ -187,7 +220,27 @@ class MockEvalProvider(LLMProvider):
         self, messages: list[Message], tools: list[dict[str, Any]] | None = None
     ) -> AsyncGenerator[StreamEvent, None]:
         self._turn_count += 1
-        last_message = messages[-1] if messages else None
+
+        # RepoQA / Comprehension tasks
+        if self.current_task_id in MOCK_QA_RESPONSES:
+            if self._turn_count == 1:
+                tc = ToolCall(
+                    id=f"call_{self._turn_count}",
+                    name="get_repo_map",
+                    arguments={"max_tokens": 1500},
+                )
+                yield StreamEvent(type="text_delta", text="I will inspect the repository map to analyze the architecture.\n")
+                yield StreamEvent(type="tool_call_start", tool_call=tc)
+                yield StreamEvent(type="tool_call_end", tool_call=tc)
+                yield StreamEvent(type="usage", usage={"input_tokens": 150, "output_tokens": 60})
+                yield StreamEvent(type="message_end")
+                return
+
+            response_text = MOCK_QA_RESPONSES[self.current_task_id]
+            yield StreamEvent(type="text_delta", text=response_text)
+            yield StreamEvent(type="usage", usage={"input_tokens": 300, "output_tokens": 150})
+            yield StreamEvent(type="message_end")
+            return
 
         # Turn 1: If there's a known solution for the task, emit write_file tool call
         if self._turn_count == 1 and self.current_task_id in MOCK_SOLUTIONS:
@@ -217,3 +270,4 @@ class MockEvalProvider(LLMProvider):
         yield StreamEvent(type="text_delta", text=final_text)
         yield StreamEvent(type="usage", usage={"input_tokens": 220, "output_tokens": 40})
         yield StreamEvent(type="message_end")
+

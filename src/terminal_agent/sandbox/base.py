@@ -143,3 +143,8 @@ class SandboxBackend(ABC):
     ) -> SandboxResult:
         """Execute command within the sandbox according to the configured policy."""
         pass
+
+    async def terminate(self) -> None:
+        """Terminate any actively running sandbox process or container."""
+        pass
+

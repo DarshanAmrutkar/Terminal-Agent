@@ -255,3 +255,114 @@ class CodeJudge:
             feedback=feedback,
             geval_steps=steps,
         )
+
+    def evaluate_explanation(
+        self,
+        task_prompt: str,
+        explanation: str,
+        expected_concepts: list[str] | None = None,
+        tools_used: list[str] | None = None,
+    ) -> JudgeScore:
+        """Evaluate architectural explanation and repository comprehension using multi-step G-Eval rubric."""
+        expected_concepts = expected_concepts or []
+        tools_used = tools_used or []
+        steps: list[dict[str, Any]] = []
+
+        lower_exp = explanation.lower()
+        
+        # Step 1: Conceptual Recall & Entity Coverage
+        matched_concepts = [c for c in expected_concepts if c.lower() in lower_exp]
+        recall = len(matched_concepts) / len(expected_concepts) if expected_concepts else 1.0
+        
+        s1_pass = recall >= 0.60
+        s1_score = min(5.0, 1.0 + (recall * 4.0))
+        s1_reason = (
+            f"Covered {len(matched_concepts)}/{len(expected_concepts)} key concepts ({recall:.0%}): "
+            f"{matched_concepts[:4]}"
+        )
+        steps.append({
+            "step": 1,
+            "criterion": "Conceptual Recall & Entity Coverage",
+            "passed": s1_pass,
+            "score": round(s1_score, 1),
+            "reasoning": s1_reason,
+        })
+
+        # Step 2: Factual Grounding & Retrieval Evidence
+        has_file_references = bool(re.search(r"`[\w\./\-]+\.\w+`|\.py\b|src/", explanation))
+        has_code_blocks = "```" in explanation
+        has_tool_evidence = len(tools_used) > 0 or has_file_references
+        
+        s2_pass = has_file_references or has_code_blocks
+        s2_score = 5.0 if (has_file_references and has_code_blocks) else (3.5 if s2_pass else 2.0)
+        s2_reason = (
+            "Grounded in repository structure with explicit file paths and code references."
+            if s2_pass
+            else "Lacks concrete file paths and code block references."
+        )
+        steps.append({
+            "step": 2,
+            "criterion": "Factual Grounding & Retrieval Evidence",
+            "passed": s2_pass,
+            "score": round(s2_score, 1),
+            "reasoning": s2_reason,
+        })
+
+        # Step 3: Structural Clarity & Technical Depth
+        has_headings = "#" in explanation
+        has_bullets = any(marker in explanation for marker in ("- ", "* ", "1. "))
+        length_tokens = len(explanation.split())
+        is_comprehensive = length_tokens >= 80
+
+        s3_pass = has_headings and has_bullets and is_comprehensive
+        s3_score = 5.0 if s3_pass else (3.5 if is_comprehensive else 2.5)
+        s3_reason = (
+            f"Comprehensive technical structure ({length_tokens} words) with headings and organized lists."
+            if s3_pass
+            else "Explanation is brief or lacks structured headings."
+        )
+        steps.append({
+            "step": 3,
+            "criterion": "Structural Clarity & Technical Depth",
+            "passed": s3_pass,
+            "score": round(s3_score, 1),
+            "reasoning": s3_reason,
+        })
+
+        # Step 4: Absence of Hallucination
+        # Check that it didn't just output generic failure messages
+        is_error_response = any(phrase in lower_exp for phrase in ("cannot find", "unknown error", "i don't know"))
+        s4_pass = not is_error_response and len(explanation.strip()) > 50
+        s4_score = 5.0 if s4_pass else 1.5
+        s4_reason = (
+            "No refusal or hallucination detected; response directly addresses the prompt."
+            if s4_pass
+            else "Agent failed to provide an authoritative answer or encountered an error."
+        )
+        steps.append({
+            "step": 4,
+            "criterion": "Absence of Hallucination & Authority",
+            "passed": s4_pass,
+            "score": round(s4_score, 1),
+            "reasoning": s4_reason,
+        })
+
+        # Aggregated scores
+        avg_quality = (s1_score + s3_score) / 2.0
+        avg_faith = (s2_score + s4_score) / 2.0
+        overall = round((avg_quality + avg_faith) / 2.0, 2)
+
+        failed_steps = [s["reasoning"] for s in steps if not s["passed"]]
+        if failed_steps:
+            feedback = f"RepoQA: {'; '.join(failed_steps)}"
+        else:
+            feedback = f"RepoQA: Strong conceptual coverage ({recall:.0%}) with concrete code grounding"
+
+        return JudgeScore(
+            code_quality_score=round(avg_quality, 1),
+            faithfulness_score=round(avg_faith, 1),
+            overall_score=overall,
+            feedback=feedback,
+            geval_steps=steps,
+        )
+

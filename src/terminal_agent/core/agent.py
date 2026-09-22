@@ -19,6 +19,7 @@ from typing import AsyncGenerator
 from terminal_agent.core.config import AgentConfig
 from terminal_agent.llm.profiles import ModelProfile, profile_registry
 from terminal_agent.core.session import Session
+from terminal_agent.core.session_store import SessionStore
 from terminal_agent.llm.base import LLMProvider
 from terminal_agent.llm.anthropic import AnthropicProvider
 from terminal_agent.llm.openai_compatible import OpenAICompatibleProvider
@@ -29,7 +30,7 @@ from terminal_agent.llm.message import (
     StreamEvent,
     LLMResponse,
 )
-from terminal_agent.tools.registry import ToolRegistry
+from terminal_agent.tools.registry import ToolRegistry, discover_builtin_tools
 from terminal_agent.tools.base import ToolResult
 from terminal_agent.utils.cost import CostTracker
 from terminal_agent.utils.display import (
@@ -42,6 +43,21 @@ from terminal_agent.utils.display import (
 )
 from terminal_agent.utils.permissions import PermissionChecker, PermissionOutcome
 from terminal_agent.core.reflexion import ReflexionMemory
+from terminal_agent.llm.registry import default_provider_registry, ProviderRegistry
+from terminal_agent.core.events import (
+    AgentEvent,
+    AgentEventListener,
+    RichConsoleListener,
+    TurnStartEvent,
+    TurnEndEvent,
+    TextDeltaEvent,
+    ToolCallStartEvent,
+    ToolCallEndEvent,
+)
+from terminal_agent.utils.approval import (
+    ApprovalHandler,
+    CLIApprovalHandler,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,22 +69,30 @@ class Agent:
     into a coherent agentic workflow.
     """
 
-    def __init__(self, config: AgentConfig, working_directory: str | None = None):
+    def __init__(
+        self, 
+        config: AgentConfig, 
+        working_directory: str | None = None,
+        listeners: list[AgentEventListener] | None = None,
+        approval_handler: ApprovalHandler | None = None,
+        provider_registry: ProviderRegistry | None = None,
+        session: Session | None = None,
+        session_store: SessionStore | None = None,
+    ):
         self.config = config
         self.working_dir = working_directory or str(Path.cwd())
+        self.listeners: list[AgentEventListener] = list(listeners) if listeners is not None else [RichConsoleListener()]
+        self.approval_handler = approval_handler or CLIApprovalHandler()
+        self.provider_registry = provider_registry or default_provider_registry
+        self.session_store = session_store if session_store is not None else SessionStore()
         
         # Validate API key early — fail fast before any other setup.
         config.validate_api_key()
         
-        # Initialize LLM provider
+        # Initialize LLM provider via registry (Open-Closed Principle)
         self.provider = self._create_provider()
         
-        # Initialize tool registry.
-        # Import tool modules first — this triggers @register_tool decorators,
-        # which append tool classes to the module-level _TOOL_CLASSES list.
-        # Then create a fresh registry instance and load those classes into it.
-        # This is dependency injection: Agent owns its registry. Tests can
-        # construct a ToolRegistry with only the tools they need.
+        # Initialize tool registry via discovery (Dependency Inversion Principle)
         self._import_tool_modules()
         self.registry = ToolRegistry()
         self.registry.load_defaults()
@@ -93,16 +117,14 @@ class Agent:
                 run_cmd.working_dir = Path(self.working_dir)
 
         # Initialize permission checker.
-        # PermissionChecker owns all policy decisions about whether a tool call
-        # can proceed. Agent delegates to it without knowing tool-specific rules.
         self.permission_checker = PermissionChecker(
             permission_mode=config.permission_mode.value,
             safe_commands=list(config.safe_commands),
             blocked_patterns=list(config.blocked_patterns),
         )
         
-        # Initialize session
-        self.session = Session(working_directory=self.working_dir)
+        # Initialize session (resumed session or fresh instance)
+        self.session = session if session is not None else Session(working_directory=self.working_dir)
         
         # Initialize cost tracker
         self.cost_tracker = CostTracker(model_name=config.model_name)
@@ -118,49 +140,52 @@ class Agent:
         system_prompt = self._load_system_prompt()
         self.session.set_system_message(system_prompt)
 
+    def add_listener(self, listener: AgentEventListener) -> None:
+        """Register an observer for agent execution events."""
+        if listener not in self.listeners:
+            self.listeners.append(listener)
+
+    def remove_listener(self, listener: AgentEventListener) -> None:
+        """Remove an observer."""
+        if listener in self.listeners:
+            self.listeners.remove(listener)
+
+    def emit(self, event: AgentEvent) -> None:
+        """Dispatch domain events to registered observers."""
+        for listener in self.listeners:
+            try:
+                if isinstance(event, TurnStartEvent):
+                    listener.on_turn_start(event)
+                elif isinstance(event, TurnEndEvent):
+                    listener.on_turn_end(event)
+                elif isinstance(event, TextDeltaEvent):
+                    listener.on_text_delta(event)
+                elif isinstance(event, ToolCallStartEvent):
+                    listener.on_tool_call_start(event)
+                elif isinstance(event, ToolCallEndEvent):
+                    listener.on_tool_call_end(event)
+            except Exception as e:
+                logger.warning(f"Error in event listener {listener}: {e}")
+
     def _create_provider(self) -> LLMProvider:
-        """Factory method: create the right LLM provider for the configured provider name.
-
-        Design: Why a factory method instead of instantiating in __init__?
-        The factory is easily overridable in tests (subclass Agent and override
-        _create_provider to return a mock). It also keeps __init__ clean and
-        makes the provider creation logic easy to read in one place.
-
-        Provider routing:
-          anthropic   → AnthropicProvider (uses Anthropic SDK directly)
-          nvidia      → OpenAICompatibleProvider (NVIDIA NIM is OpenAI-compatible)
-          openai      → OpenAICompatibleProvider (real OpenAI API)
-          openrouter  → OpenAICompatibleProvider (OpenRouter is OpenAI-compatible)
-
-        Why are nvidia/openrouter routed to OpenAICompatibleProvider?
-        They implement the OpenAI Chat Completions API spec.
-        There is no meaningful difference at the HTTP level; only the base_url
-        and api_key differ. Routing to the same provider class avoids
-        duplication and demonstrates that the abstraction is correct.
-        """
-        provider = self.config.provider
-        api_key = self.config.get_api_key()
-
-        if provider == "anthropic":
-            return AnthropicProvider(
-                model=self.config.model_name,
-                api_key=api_key,
-                max_tokens=self.config.max_tokens,
-            )
-
-        if provider in ("nvidia", "openai", "openrouter"):
-            base_url = self.config.get_base_url()
-            return OpenAICompatibleProvider(
-                model=self.config.model_name,
-                api_key=api_key,
-                base_url=base_url,
-                max_tokens=self.config.max_tokens,
-            )
-
-        raise ValueError(
-            f"Unsupported provider: {provider!r}. "
-            f"Supported providers: anthropic, nvidia, openai, openrouter"
-        )
+        """Factory method: create LLM provider via the extensible ProviderRegistry (Open-Closed Principle)."""
+        primary = self.provider_registry.create(self.config.provider, self.config)
+        if getattr(self.config, "enable_failover", False) and getattr(self.config, "fallback_provider", None):
+            try:
+                fallback_config = self.config.model_copy(
+                    update={
+                        "provider": self.config.fallback_provider,
+                        "model_name": self.config.fallback_model or self.config.model_name,
+                    }
+                )
+                fallback_p = self.provider_registry.create(
+                    self.config.fallback_provider, fallback_config
+                )
+                from terminal_agent.llm.fallback import FallbackProvider
+                return FallbackProvider(primary=primary, fallbacks=[fallback_p])
+            except Exception as e:
+                logger.warning(f"Could not initialize fallback provider: {e}")
+        return primary
 
     def switch_model_profile(self, profile_name_or_obj: str | ModelProfile) -> ModelProfile:
         """Switch the active LLM provider and model profile in-session.
@@ -307,13 +332,37 @@ class Agent:
         self.session.add_user_message(user_input)
         self.session.reset_iteration_count()
         
-        # Enter the agent loop
-        await self._agent_loop()
+        try:
+            # Enter the agent loop
+            await self._agent_loop()
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            logger.warning("Turn interrupted by user (Ctrl+C). Terminating running sandbox operations.")
+            await self.sandbox.terminate()
+            if self.session_store:
+                try:
+                    self.session_store.save_session(self.session)
+                except Exception as e:
+                    logger.warning(f"Failed to save session during interrupt: {e}")
+            raise
+        except Exception:
+            if self.session_store:
+                try:
+                    self.session_store.save_session(self.session)
+                except Exception as e:
+                    logger.warning(f"Failed to save session during error: {e}")
+            raise
+
+        if self.session_store:
+            try:
+                self.session_store.save_session(self.session)
+            except Exception as e:
+                logger.warning(f"Failed to auto-save session: {e}")
 
     async def _agent_loop(self) -> None:
         """The core ReAct loop: Think → Act → Observe → Repeat."""
         while True:
             iteration = self.session.increment_iteration()
+            self.emit(TurnStartEvent(iteration=iteration))
             
             # Guard against infinite loops
             if iteration > self.config.max_iterations:
@@ -332,10 +381,13 @@ class Agent:
                 nonlocal current_input_tokens, current_output_tokens
                 current_input_tokens = input_tokens
                 current_output_tokens = output_tokens
-                # Update session token counts with delta
-                self.session.total_input_tokens = self.session.total_input_tokens - self._last_input_tokens + input_tokens
-                self.session.total_output_tokens = self.session.total_output_tokens - self._last_output_tokens + output_tokens
-                # Store for next delta calculation
+                # Encapsulated token arithmetic inside Session (Information Expert)
+                self.session.apply_stream_usage(
+                    input_tokens, 
+                    output_tokens, 
+                    self._last_input_tokens, 
+                    self._last_output_tokens
+                )
                 self._last_input_tokens = input_tokens
                 self._last_output_tokens = output_tokens
             
@@ -367,6 +419,7 @@ class Agent:
             
             # Add assistant message to history
             self.session.add_assistant_message(response.message)
+            self.emit(TurnEndEvent(iteration=iteration, response=response))
             
             # Check if we need to execute tool calls
             if response.message.tool_calls:
@@ -381,8 +434,6 @@ class Agent:
                 continue
             else:
                 # No tool calls — this is the final response
-                # The text was already streamed to the console
-                console.print()  # Final newline after streaming
                 break
 
     async def _stream_response(self, on_usage: callable = None) -> LLMResponse:
@@ -411,16 +462,10 @@ class Agent:
         
         async for event in self.provider.stream(messages, tools=tool_defs):
             if event.type == "text_delta" and event.text:
-                if not started_text:
-                    console.print("\n[bold blue]🤖 Agent:[/bold blue] ", end="")
-                    started_text = True
-                display_streaming_token(event.text)
+                self.emit(TextDeltaEvent(text=event.text))
                 text_parts.append(event.text)
                 
             elif event.type == "tool_call_start":
-                if started_text:
-                    console.print()  # Newline after text before tool call
-                    started_text = False
                 current_tool_call = event.tool_call
                 
             elif event.type == "tool_call_delta":
@@ -445,9 +490,6 @@ class Agent:
 
             elif event.type == "message_end":
                 break
-        
-        if started_text:
-            console.print()  # Final newline after streamed text
         
         # Build the complete response
         content = "".join(text_parts) if text_parts else None
@@ -511,17 +553,7 @@ class Agent:
         return results
 
     async def _execute_single_tool(self, tool_call: ToolCall) -> ToolResult:
-        """Execute a single tool call with the full approval/safety flow.
-
-        Flow:
-          1. Resolve the tool from the registry.
-          2. Display the tool call to the user.
-          3. Ask PermissionChecker whether to allow, deny, or prompt for approval.
-          4. Execute the tool (if allowed).
-          5. Truncate output if over budget.
-          6. Track any file paths that were accessed.
-          7. Display the result.
-        """
+        """Execute a single tool call with the full approval/safety flow."""
         try:
             tool = self.registry.get(tool_call.name)
         except KeyError:
@@ -531,31 +563,41 @@ class Agent:
                 is_error=True,
             )
 
-        # Display the tool call
-        display_tool_call(tool_call.name, tool_call.arguments)
+        # Notify observers that tool execution started
+        self.emit(ToolCallStartEvent(tool_name=tool_call.name, arguments=tool_call.arguments))
 
-        # --- Permission check ---
-        # PermissionChecker decides; Agent acts. Agent never references tool names.
+        # PermissionChecker decides; Agent delegates.
         decision = self.permission_checker.check(tool, tool_call)
 
         if decision.outcome == PermissionOutcome.DENY:
             result = ToolResult(output=decision.reason, is_error=True)
-            display_tool_result(tool_call.name, result.output, is_error=True)
+            self.emit(
+                ToolCallEndEvent(
+                    tool_name=tool_call.name,
+                    is_error=True,
+                    output=result.output,
+                )
+            )
             return result
 
         if decision.outcome == PermissionOutcome.REQUIRE_APPROVAL:
-            # Show the approval prompt to the user.
-            # The prompt text comes from the decision reason, not from Agent.
-            approved = display_approval_prompt(decision.reason)
+            # Delegate to injectable ApprovalHandler strategy
+            approved = await self.approval_handler.request_approval(decision.reason)
             if not approved:
                 result = ToolResult(
                     output=f"User declined to run: {decision.reason}",
                     is_error=True,
                 )
-                display_tool_result(tool_call.name, result.output, is_error=True)
+                self.emit(
+                    ToolCallEndEvent(
+                        tool_name=tool_call.name,
+                        is_error=True,
+                        output=result.output,
+                    )
+                )
                 return result
 
-        # --- Execute ---
+        # Execute
         try:
             result = await tool.execute(**tool_call.arguments)
 
@@ -599,11 +641,14 @@ class Agent:
         else:
             self.reflexion_memory.mark_resolved(tool_call.name)
 
-        # Display the result (truncated for readability in the terminal).
-        display_tool_result(
-            tool_call.name,
-            result.output[:500] + ("..." if len(result.output) > 500 else ""),
-            is_error=result.is_error,
+        # Notify observers of completion
+        preview = result.output[:500] + ("..." if len(result.output) > 500 else "")
+        self.emit(
+            ToolCallEndEvent(
+                tool_name=tool_call.name,
+                is_error=result.is_error,
+                output=preview,
+            )
         )
 
         return result

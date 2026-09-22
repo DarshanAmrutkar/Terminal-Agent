@@ -64,6 +64,20 @@ class AgentConfig(BaseSettings):
         description="Max output tokens per LLM response",
     )
 
+    # --- Provider Failover & Circuit Breaker ---
+    fallback_provider: Optional[str] = Field(
+        default=None,
+        description="Fallback provider to switch to on rate limits/outages (e.g. 'openrouter', 'openai')",
+    )
+    fallback_model: Optional[str] = Field(
+        default=None,
+        description="Model name for fallback provider",
+    )
+    enable_failover: bool = Field(
+        default=False,
+        description="Whether to enable automated circuit-breaker provider failover",
+    )
+
     # --- Agent Policy Settings ---
     max_iterations: int = Field(
         default=25,

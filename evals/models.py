@@ -15,6 +15,7 @@ class TaskCategory(str, Enum):
     REFACTOR = "refactor"
     FEATURE = "feature"
     MULTI_FILE = "multi_file"
+    REPO_QA = "repo_qa"
 
 
 class TaskDifficulty(str, Enum):
@@ -25,15 +26,16 @@ class TaskDifficulty(str, Enum):
 
 @dataclass
 class EvalTask:
-    """A coding task to evaluate an agent against."""
+    """A coding or comprehension task to evaluate an agent against."""
     task_id: str
     name: str
     category: TaskCategory
     difficulty: TaskDifficulty
     prompt: str
-    initial_files: dict[str, str]
-    test_files: dict[str, str]
+    initial_files: dict[str, str] = field(default_factory=dict)
+    test_files: dict[str, str] = field(default_factory=dict)
     expected_files_modified: list[str] = field(default_factory=list)
+    expected_concepts: list[str] = field(default_factory=list)
     max_iterations: int = 15
 
 

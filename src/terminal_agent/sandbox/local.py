@@ -37,12 +37,22 @@ async def _kill_process_tree(process: asyncio.subprocess.Process) -> None:
 class LocalRestrictedSandbox(SandboxBackend):
     """Executes commands on host system under strict environment and path containment."""
 
+    def __init__(self, policy: SandboxPolicy):
+        super().__init__(policy)
+        self._current_process: asyncio.subprocess.Process | None = None
+
     @property
     def name(self) -> str:
         return "local_restricted"
 
     def is_available(self) -> bool:
         return True
+
+    async def terminate(self) -> None:
+        """Terminate any currently executing subprocess and process tree."""
+        if self._current_process is not None and self._current_process.returncode is None:
+            await _kill_process_tree(self._current_process)
+            self._current_process = None
 
     async def execute(
         self,
@@ -87,6 +97,7 @@ class LocalRestrictedSandbox(SandboxBackend):
                 cwd=str(safe_cwd),
                 env=clean_env,
             )
+            self._current_process = process
 
             try:
                 stdout_bytes, stderr_bytes = await asyncio.wait_for(
@@ -103,6 +114,11 @@ class LocalRestrictedSandbox(SandboxBackend):
                     duration_seconds=round(duration, 2),
                     timed_out=True,
                 )
+            except (asyncio.CancelledError, KeyboardInterrupt):
+                await _kill_process_tree(process)
+                raise
+            finally:
+                self._current_process = None
 
             duration = time.perf_counter() - start_time
             stdout = stdout_bytes.decode("utf-8", errors="replace").strip()

@@ -441,6 +441,68 @@ BENCHMARK_TASKS: list[EvalTask] = [
         },
         expected_files_modified=["user_model.py"],
     ),
+
+    # -------------------------------------------------------------------------
+    # RepoQA Tasks: Repository Comprehension & Architectural Reasoning
+    # -------------------------------------------------------------------------
+    EvalTask(
+        task_id="task_qa_01_sandboxing",
+        name="Explain architecture and tool execution sandboxing",
+        category=TaskCategory.REPO_QA,
+        difficulty=TaskDifficulty.MEDIUM,
+        prompt="Give me a high-level overview of this codebase architecture and explain how tool execution sandboxing works.",
+        expected_concepts=[
+            "SandboxBackend",
+            "LocalRestrictedSandbox",
+            "SandboxPolicy",
+            "sanitize_environment",
+            "resolve_safe_path",
+            "Docker",
+        ],
+    ),
+    EvalTask(
+        task_id="task_qa_02_permissions",
+        name="Explain command permissions and security guardrails",
+        category=TaskCategory.REPO_QA,
+        difficulty=TaskDifficulty.EASY,
+        prompt="Where in the codebase do we enforce command permissions, and what command patterns are blocked by default?",
+        expected_concepts=[
+            "PermissionChecker",
+            "blocked_patterns",
+            "safe_commands",
+            "PermissionMode",
+            "yolo",
+        ],
+    ),
+    EvalTask(
+        task_id="task_qa_03_prompt_caching",
+        name="Explain prompt caching optimization and cost accounting",
+        category=TaskCategory.REPO_QA,
+        difficulty=TaskDifficulty.MEDIUM,
+        prompt="Explain how prompt caching is implemented, where ephemeral cache controls are placed, and how cost savings are computed.",
+        expected_concepts=[
+            "cache_control",
+            "ephemeral",
+            "cost_tracker",
+            "discount",
+            "cache_read_input_tokens",
+        ],
+    ),
+    EvalTask(
+        task_id="task_qa_04_session_persistence",
+        name="Explain session serialization and resumption lifecycle",
+        category=TaskCategory.REPO_QA,
+        difficulty=TaskDifficulty.EASY,
+        prompt="Explain how sessions are serialized, persisted to disk, and resumed via the CLI.",
+        expected_concepts=[
+            "SessionStore",
+            "save_session",
+            "load_session",
+            "to_dict",
+            "from_dict",
+            "--resume",
+        ],
+    ),
 ]
 
 

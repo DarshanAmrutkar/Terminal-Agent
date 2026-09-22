@@ -58,6 +58,18 @@ def main(
         False, "--yolo",
         help="Auto-approve all commands (equivalent to --permission yolo)",
     ),
+    resume: Optional[str] = typer.Option(
+        None, "--resume", "-r",
+        help="Resume a prior session by ID or 'latest'",
+    ),
+    fallback_provider: Optional[str] = typer.Option(
+        None, "--fallback-provider",
+        help="Fallback LLM provider to switch to on rate limits/outages",
+    ),
+    enable_failover: bool = typer.Option(
+        False, "--enable-failover",
+        help="Enable automated circuit-breaker provider failover",
+    ),
 ) -> None:
     """Start an interactive Terminal Agent session."""
     if ctx.invoked_subcommand is not None:
@@ -79,6 +91,11 @@ def main(
         overrides["permission_mode"] = PermissionMode(permission)
     if yolo:
         overrides["permission_mode"] = PermissionMode.YOLO
+    if fallback_provider:
+        overrides["fallback_provider"] = fallback_provider
+        overrides["enable_failover"] = True
+    if enable_failover:
+        overrides["enable_failover"] = True
 
     try:
         config = AgentConfig(**overrides)
@@ -90,7 +107,7 @@ def main(
     from terminal_agent.cli import run_interactive
 
     try:
-        asyncio.run(run_interactive(config))
+        asyncio.run(run_interactive(config, resume_id=resume))
     except KeyboardInterrupt:
         console.print("\n[dim]Goodbye![/dim]")
 
@@ -143,6 +160,46 @@ def eval_benchmark(
     report = asyncio.run(runner.run_suite(tasks_to_run))
     if report.failed_tasks > 0:
         raise typer.Exit(1)
+
+
+@app.command(name="sessions")
+def list_sessions(
+    limit: int = typer.Option(
+        15, "--limit", "-n",
+        help="Max number of sessions to list",
+    ),
+) -> None:
+    """List recent saved sessions and status."""
+    from terminal_agent.core.session_store import SessionStore
+    from rich.table import Table
+
+    store = SessionStore()
+    sessions = store.list_sessions(limit=limit)
+
+    if not sessions:
+        console.print("[dim]No saved sessions found.[/dim]")
+        return
+
+    table = Table(title="Recent Agent Sessions", border_style="cyan")
+    table.add_column("Session ID", style="bold green")
+    table.add_column("Updated", style="dim")
+    table.add_column("Working Dir", style="blue")
+    table.add_column("Msgs", justify="right")
+    table.add_column("Tokens", justify="right")
+    table.add_column("First Prompt Preview", style="italic")
+
+    for s in sessions:
+        table.add_row(
+            s["session_id"],
+            s["updated_at"],
+            s["working_directory"][:30] + ("..." if len(s["working_directory"]) > 30 else ""),
+            str(s["message_count"]),
+            f"{s['total_tokens']:,}",
+            s["preview"],
+        )
+
+    console.print(table)
+    console.print("[dim]Resume any session via: agent --resume <session_id>[/dim]\n")
 
 
 if __name__ == "__main__":

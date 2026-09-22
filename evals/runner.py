@@ -19,7 +19,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from evals.judge import CodeJudge
-from evals.models import EvalReport, EvalResult, EvalTask
+from evals.models import EvalReport, EvalResult, EvalTask, TaskCategory
 from evals.mock_provider import MockEvalProvider
 from evals.tasks.fixtures import BENCHMARK_TASKS, get_all_tasks, get_task
 from evals.trajectory import TrajectoryAnalyzer
@@ -126,17 +126,41 @@ class EvalRunner:
 
             duration = time.perf_counter() - start_time
 
-            # 5. Run pytest in the temporary directory to verify the fix
-            test_run = subprocess.run(
-                [sys.executable, "-m", "pytest", "-q"],
-                cwd=str(temp_path),
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
+            # 5. Verification step: Pytest (for coding tasks) or RepoQA evaluation (for comprehension tasks)
+            judge_score = None
+            if task.category == TaskCategory.REPO_QA:
+                last_assistant_msg = ""
+                for m in reversed(messages):
+                    if m.role.value == "assistant" and m.content:
+                        last_assistant_msg = m.content
+                        break
 
-            passed = (test_run.returncode == 0)
-            output = test_run.stdout or test_run.stderr
+                tools_used = [
+                    tc.name for m in messages if m.tool_calls for tc in m.tool_calls
+                ]
+
+                judge_provider = agent.provider if self.provider != "mock" else None
+                judge = CodeJudge(provider=judge_provider)
+                judge_score = judge.evaluate_explanation(
+                    task_prompt=task.prompt,
+                    explanation=last_assistant_msg,
+                    expected_concepts=task.expected_concepts,
+                    tools_used=tools_used,
+                )
+
+                # Passes if overall score >= 3.5
+                passed = judge_score.overall_score >= 3.5
+                output = f"RepoQA Score: {judge_score.overall_score}/5.0 | {judge_score.feedback}"
+            else:
+                test_run = subprocess.run(
+                    [sys.executable, "-m", "pytest", "-q"],
+                    cwd=str(temp_path),
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                passed = (test_run.returncode == 0)
+                output = test_run.stdout or test_run.stderr
 
             # 6. Trajectory analytics
             trajectory = TrajectoryAnalyzer.analyze(messages)
@@ -185,9 +209,8 @@ class EvalRunner:
 
             code_diff = "".join(diff_lines)
 
-            # 8. LLM-as-a-Judge semantic evaluation
-            judge_score = None
-            if self.enable_judge:
+            # 8. LLM-as-a-Judge semantic evaluation for code changes
+            if self.enable_judge and task.category != TaskCategory.REPO_QA:
                 last_assistant_msg = ""
                 for m in reversed(messages):
                     if m.role.value == "assistant" and m.content:
