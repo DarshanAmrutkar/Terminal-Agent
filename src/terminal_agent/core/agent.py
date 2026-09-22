@@ -10,9 +10,11 @@ Orchestrates the think-act-observe cycle:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import AsyncGenerator
+
 
 from terminal_agent.core.config import AgentConfig
 from terminal_agent.llm.profiles import ModelProfile, profile_registry
@@ -303,6 +305,12 @@ class Agent:
             self._last_input_tokens = 0
             self._last_output_tokens = 0
             
+            # Context compaction check
+            if self.session.needs_compaction(self.config.max_context_tokens, self.config.summarization_threshold):
+                saved = self.session.compact()
+                if saved > 0:
+                    logger.info(f"Compacted conversation context, saved ~{saved} characters")
+
             # Stream the LLM response with real-time usage callback
             response = await self._stream_response(on_usage=on_usage)
             
@@ -311,7 +319,7 @@ class Agent:
                 self.session.update_token_usage(response.input_tokens, response.output_tokens)
             
             # Track token usage in cost tracker
-            self.cost_tracker.add_usage(response.input_tokens, response.output_tokens)
+            self.cost_tracker.add_usage(response.input_tokens, response.output_tokens, model_name=self.config.model_name)
             
             # Add assistant message to history
             self.session.add_assistant_message(response.message)
@@ -419,9 +427,28 @@ class Agent:
     async def _execute_tool_calls(
         self, tool_calls: list[ToolCall]
     ) -> list[ToolResultContent]:
-        """Execute a list of tool calls and return their results."""
+        """Execute a list of tool calls and return their results.
+        Runs read-only tools that do not require approval concurrently.
+        """
+        can_run_concurrently = len(tool_calls) > 1 and all(
+            tc.name in self.registry and not self.registry.get(tc.name).requires_approval
+            for tc in tool_calls
+        )
+
+        if can_run_concurrently:
+            results_list = await asyncio.gather(
+                *(self._execute_single_tool(tc) for tc in tool_calls)
+            )
+            return [
+                ToolResultContent(
+                    tool_call_id=tc.id,
+                    output=res.output,
+                    is_error=res.is_error,
+                )
+                for tc, res in zip(tool_calls, results_list)
+            ]
+
         results: list[ToolResultContent] = []
-        
         for tc in tool_calls:
             result = await self._execute_single_tool(tc)
             results.append(
@@ -431,7 +458,6 @@ class Agent:
                     is_error=result.is_error,
                 )
             )
-        
         return results
 
     async def _execute_single_tool(self, tool_call: ToolCall) -> ToolResult:

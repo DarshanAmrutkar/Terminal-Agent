@@ -3,12 +3,37 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 
+from pathlib import Path
+
+
 @dataclass
 class ToolResult:
     """Represents the outcome of a tool execution."""
     output: str
     is_error: bool = False
     metadata: Optional[Dict[str, Any]] = None
+
+
+def resolve_safe_path(path_str: str, base_dir: Path | str | None = None) -> tuple[Optional[Path], Optional[str]]:
+    """Resolve a path safely within base_dir (defaults to Path.cwd()).
+
+    Returns:
+        (resolved_path, None) if path is within base_dir.
+        (None, error_message) if path attempts to escape base_dir.
+    """
+    try:
+        base = Path(base_dir or Path.cwd()).resolve()
+        target = Path(path_str)
+        if not target.is_absolute():
+            resolved = (base / target).resolve()
+        else:
+            resolved = target.resolve()
+
+        if resolved == base or base in resolved.parents:
+            return resolved, None
+        return None, f"Error: Path traversal outside working directory is blocked: '{path_str}'"
+    except Exception as e:
+        return None, f"Error resolving path '{path_str}': {e}"
 
 
 class Tool(abc.ABC):

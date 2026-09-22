@@ -1,9 +1,30 @@
+import asyncio
 import os
 from pathlib import Path
 from typing import Any, Dict
+import uuid
 
-from .base import Tool, ToolResult
+from .base import Tool, ToolResult, resolve_safe_path
 from .registry import register_tool
+
+
+def _write_file_sync(file_path: Path, content: str, create_dirs: bool) -> tuple[int, bool]:
+    is_new = not file_path.exists()
+    if create_dirs:
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Atomic write using a temporary file in the same directory
+    tmp_file = file_path.parent / f".tmp_{uuid.uuid4().hex}_{file_path.name}"
+    try:
+        tmp_file.write_text(content, encoding="utf-8")
+        tmp_file.replace(file_path)
+    finally:
+        if tmp_file.exists():
+            try:
+                tmp_file.unlink()
+            except Exception:
+                pass
+    return len(content.encode("utf-8")), is_new
 
 
 @register_tool
@@ -50,34 +71,14 @@ class WriteFileTool(Tool):
         create_dirs: bool = True, 
         **kwargs
     ) -> ToolResult:
+        file_path, err = resolve_safe_path(path)
+        if err or file_path is None:
+            return ToolResult(output=err or "Invalid path", is_error=True)
+
         try:
-            file_path = Path(path)
-            
-            is_new = not file_path.exists()
-            
-            if create_dirs:
-                try:
-                    file_path.parent.mkdir(parents=True, exist_ok=True)
-                except PermissionError:
-                    return ToolResult(
-                        output=f"Error: Permission denied when creating directories for '{path}'.",
-                        is_error=True
-                    )
-                except Exception as e:
-                    return ToolResult(
-                        output=f"Error creating directories for '{path}': {str(e)}",
-                        is_error=True
-                    )
-            
-            try:
-                # Write the file, ensuring utf-8
-                bytes_written = file_path.write_text(content, encoding="utf-8")
-            except PermissionError:
-                return ToolResult(
-                    output=f"Error: Permission denied when writing to '{path}'.",
-                    is_error=True
-                )
-                
+            bytes_written, is_new = await asyncio.to_thread(
+                _write_file_sync, file_path, content, create_dirs
+            )
             action = "Created new file" if is_new else "Overwrote existing file"
             return ToolResult(
                 output=f"Successfully {action.lower()} at '{path}'. Wrote {bytes_written} bytes.",
@@ -87,9 +88,14 @@ class WriteFileTool(Tool):
                     "path": str(file_path)
                 }
             )
-
+        except PermissionError:
+            return ToolResult(
+                output=f"Error: Permission denied when writing to '{path}'.",
+                is_error=True
+            )
         except Exception as e:
             return ToolResult(
                 output=f"An unexpected error occurred while writing to '{path}': {str(e)}", 
                 is_error=True
             )
+

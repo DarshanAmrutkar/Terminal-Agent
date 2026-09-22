@@ -155,8 +155,19 @@ class AnthropicProvider(LLMProvider):
                 current_tool_name = None
                 current_tool_input_json = ""
                 
+                input_tokens = 0
                 async for event in stream:
-                    if event.type == "content_block_start":
+                    if event.type == "message_start":
+                        if hasattr(event, "message") and hasattr(event.message, "usage"):
+                            input_tokens = getattr(event.message.usage, "input_tokens", 0) or 0
+                            yield StreamEvent(
+                                type="usage",
+                                usage={
+                                    "input_tokens": input_tokens,
+                                    "output_tokens": 0,
+                                },
+                            )
+                    elif event.type == "content_block_start":
                         if event.content_block.type == "text":
                             yield StreamEvent(type="text_delta")
                         elif event.content_block.type == "tool_use":
@@ -183,15 +194,14 @@ class AnthropicProvider(LLMProvider):
                             current_tool_name = None
                             current_tool_input_json = ""
                     elif event.type == "message_delta":
-                        # This event carries the real token usage for the entire request.
-                        # It is the authoritative source — far more accurate than any
-                        # client-side estimation using tiktoken.
+                        # This event carries output token usage
                         if hasattr(event, 'usage') and event.usage is not None:
+                            output_tokens = getattr(event.usage, 'output_tokens', 0) or 0
                             yield StreamEvent(
                                 type="usage",
                                 usage={
-                                    "input_tokens": getattr(event.usage, 'input_tokens', 0) or 0,
-                                    "output_tokens": getattr(event.usage, 'output_tokens', 0) or 0,
+                                    "input_tokens": input_tokens,
+                                    "output_tokens": output_tokens,
                                 },
                             )
                     elif event.type == "message_stop":

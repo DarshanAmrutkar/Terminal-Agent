@@ -5,6 +5,31 @@ from .base import Tool, ToolResult
 from .registry import register_tool
 
 
+import sys
+import subprocess
+
+async def _kill_process_tree(process: asyncio.subprocess.Process) -> None:
+    """Terminate the process and all its children across platforms."""
+    try:
+        if sys.platform == "win32":
+            # taskkill /F /T /PID terminates the specified process and any child processes started by it
+            await asyncio.to_thread(
+                subprocess.run,
+                ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        else:
+            process.kill()
+    except Exception:
+        pass
+    try:
+        await process.wait()
+    except Exception:
+        pass
+
+
 @register_tool
 class RunCommandTool(Tool):
     """Tool for executing shell commands."""
@@ -50,8 +75,10 @@ class RunCommandTool(Tool):
         **kwargs
     ) -> ToolResult:
         try:
+            # Use DEVNULL for stdin so interactive prompts do not hang indefinitely
             process = await asyncio.create_subprocess_shell(
                 command,
+                stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=cwd
@@ -62,7 +89,7 @@ class RunCommandTool(Tool):
                     process.communicate(), timeout=timeout
                 )
             except asyncio.TimeoutError:
-                process.kill()
+                await _kill_process_tree(process)
                 return ToolResult(
                     output=f"Error: Command timed out after {timeout} seconds.",
                     is_error=True

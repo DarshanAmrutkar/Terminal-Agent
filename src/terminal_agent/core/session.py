@@ -44,6 +44,7 @@ class Session:
     created_at: datetime = field(default_factory=datetime.now)
     total_input_tokens: int = 0
     total_output_tokens: int = 0
+    current_context_tokens: int = 0
     iteration_count: int = 0
 
     def add_message(self, message: Message) -> None:
@@ -98,9 +99,11 @@ class Session:
         self.active_files.discard(os.path.normpath(path))
 
     def update_token_usage(self, input_tokens: int, output_tokens: int) -> None:
-        """Update cumulative token usage counts."""
+        """Update cumulative token usage counts and current context tokens."""
         self.total_input_tokens += input_tokens
         self.total_output_tokens += output_tokens
+        if input_tokens > 0:
+            self.current_context_tokens = input_tokens + output_tokens
 
     def increment_iteration(self) -> int:
         """Increment and return the iteration count."""
@@ -119,35 +122,68 @@ class Session:
             self.messages.append(system_msg)
         self.active_files.clear()
         self.iteration_count = 0
+        self.current_context_tokens = 0
 
     # ------------------------------------------------------------------
     # Context budget
     # ------------------------------------------------------------------
 
+    def estimate_active_tokens(self) -> int:
+        """Estimate token count of the currently active message list."""
+        char_count = 0
+        for m in self.messages:
+            if m.content:
+                char_count += len(m.content)
+            if m.tool_calls:
+                for tc in m.tool_calls:
+                    char_count += len(tc.name) + len(json.dumps(tc.arguments))
+            if m.tool_results:
+                for tr in m.tool_results:
+                    char_count += len(tr.output)
+        return max(1, char_count // 4)
+
     def token_usage_ratio(self, max_context_tokens: int) -> float:
-        """Return the fraction of the context budget currently used.
-
-        This is an *estimate* based on cumulative token counts tracked during
-        the session. It is approximate because:
-          - We count tokens per-response, not per full message list.
-          - The provider's token count includes system prompt overhead.
-
-        Returns a float in [0.0, inf). Values > 1.0 indicate over-budget.
-        """
+        """Return the fraction of the context budget currently used by active messages."""
         if max_context_tokens <= 0:
             return 0.0
-        total = self.total_input_tokens + self.total_output_tokens
-        return total / max_context_tokens
+        active_tokens = (
+            self.current_context_tokens
+            if self.current_context_tokens > 0
+            else self.estimate_active_tokens()
+        )
+        return active_tokens / max_context_tokens
 
     def needs_compaction(self, max_context_tokens: int, threshold: float = 0.75) -> bool:
-        """Return True when context usage exceeds the given threshold.
-
-        Args:
-            max_context_tokens: The provider's context window size.
-            threshold: Fraction of window (0.0–1.0) at which to trigger compaction.
-                       Default 0.75 means "compact when 75% full".
-        """
+        """Return True when active context usage exceeds the given threshold."""
         return self.token_usage_ratio(max_context_tokens) >= threshold
+
+    def compact(self) -> int:
+        """Compact older tool result messages in history to reclaim context window.
+
+        Truncates large tool outputs in messages preceding the last 4 turns.
+        Returns the number of characters saved.
+        """
+        saved_chars = 0
+        if len(self.messages) <= 4:
+            return 0
+
+        # Protect system message (index 0) and the most recent 4 messages
+        for msg in self.messages[1:-4]:
+            if msg.role == Role.TOOL_RESULT and msg.tool_results:
+                for tr in msg.tool_results:
+                    if len(tr.output) > 500:
+                        original_len = len(tr.output)
+                        tr.output = (
+                            tr.output[:200]
+                            + "\n[...prior tool output compacted to reclaim context...]\n"
+                            + tr.output[-200:]
+                        )
+                        saved_chars += (original_len - len(tr.output))
+
+        # Reset current context count to force re-estimation
+        self.current_context_tokens = self.estimate_active_tokens()
+        return saved_chars
+
 
     def to_dict(self) -> dict:
         """Serialize session to a dictionary for persistence."""

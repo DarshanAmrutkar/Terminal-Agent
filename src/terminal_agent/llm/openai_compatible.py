@@ -365,9 +365,8 @@ class OpenAICompatibleProvider(LLMProvider):
                                 text=tc_delta.function.arguments,
                             )
 
-                # --- Stream end ---
-                if choice.finish_reason is not None:
-                    # Finalize all accumulated tool calls
+                # --- Tool call finalization on finish_reason ---
+                if choice.finish_reason is not None and tool_call_accumulators:
                     for acc in tool_call_accumulators.values():
                         try:
                             arguments = json.loads(acc["arguments"]) if acc["arguments"] else {}
@@ -386,9 +385,26 @@ class OpenAICompatibleProvider(LLMProvider):
                                 arguments=arguments,
                             ),
                         )
-
                     tool_call_accumulators.clear()
-                    yield StreamEvent(type="message_end")
+
+            # Finalize any remaining tool calls after all chunks have been processed
+            for acc in tool_call_accumulators.values():
+                try:
+                    arguments = json.loads(acc["arguments"]) if acc["arguments"] else {}
+                except json.JSONDecodeError:
+                    arguments = {}
+                yield StreamEvent(
+                    type="tool_call_end",
+                    tool_call=ToolCall(
+                        id=acc["id"],
+                        name=acc["name"],
+                        arguments=arguments,
+                    ),
+                )
+            tool_call_accumulators.clear()
+
+            # End of stream event — emitted after ALL chunks (including usage) are read
+            yield StreamEvent(type="message_end")
 
         except (APIConnectionError, RateLimitError, APIError) as e:
             logger.error(f"OpenAI-compatible stream error: {e}")

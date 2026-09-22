@@ -2,22 +2,16 @@
 
 Pricing is approximate and sourced from public Anthropic/OpenAI pricing pages.
 Update PRICING when model prices change. Costs display as informational only
-\u2014 do not use this for billing.
+— do not use this for billing.
 """
 
 from __future__ import annotations
 
+from typing import Any
+
 
 class CostTracker:
-    """Tracks cumulative token usage and estimates API cost for a session.
-
-    Design note: Why store pricing here?
-    We could fetch pricing from an external source (API, config file), but
-    that adds a network dependency and configuration complexity for a feature
-    that's purely informational. Hardcoded pricing with a clear update path
-    is simpler and more reliable. The cost display is approximate by nature
-    \u2014 exact billing comes from the API provider's dashboard.
-    """
+    """Tracks cumulative token usage and estimates API cost for a session."""
 
     # Pricing per 1,000 tokens in USD.
     # Sources:
@@ -57,29 +51,37 @@ class CostTracker:
         self.model_name = model_name
         self.total_input_tokens: int = 0
         self.total_output_tokens: int = 0
+        self.total_cost_usd: float = 0.0
+        self.usage_history: list[dict[str, Any]] = []
 
-    def add_usage(self, input_tokens: int, output_tokens: int) -> None:
-        """Add token counts from one LLM response to the running total."""
+    def add_usage(self, input_tokens: int, output_tokens: int, model_name: str | None = None) -> None:
+        """Add token counts from one LLM response and calculate cost with active model pricing."""
+        model = model_name or self.model_name
         self.total_input_tokens += input_tokens
         self.total_output_tokens += output_tokens
 
+        turn_cost = 0.0
+        pricing = self.PRICING.get(model)
+        if pricing:
+            input_cost = (input_tokens / 1000.0) * pricing["input"]
+            output_cost = (output_tokens / 1000.0) * pricing["output"]
+            turn_cost = input_cost + output_cost
+
+        self.total_cost_usd += turn_cost
+        self.usage_history.append({
+            "model": model,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cost": turn_cost,
+        })
+
     def get_session_cost(self) -> float:
-        """Estimate total session cost in USD.
+        """Estimate total session cost in USD."""
+        return self.total_cost_usd
 
-        Returns 0.0 if the model is not in the pricing table rather than
-        raising an error \u2014 cost tracking is informational, not critical path.
-        """
-        pricing = self.PRICING.get(self.model_name)
-        if not pricing:
-            return 0.0
-
-        input_cost = (self.total_input_tokens / 1000.0) * pricing["input"]
-        output_cost = (self.total_output_tokens / 1000.0) * pricing["output"]
-        return input_cost + output_cost
-
-    def is_model_known(self) -> bool:
+    def is_model_known(self, model_name: str | None = None) -> bool:
         """Return True if this model has pricing data."""
-        return self.model_name in self.PRICING
+        return (model_name or self.model_name) in self.PRICING
 
     def format_cost_summary(self) -> str:
         """Return a human-readable cost summary for display."""

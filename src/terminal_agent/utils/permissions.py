@@ -63,8 +63,60 @@ class PermissionDecision:
     reason: str = ""
 
 
+import re
+
+def _split_compound_command(command: str) -> list[str] | None:
+    """Split a compound command by shell operators (&&, ||, ;, |, &).
+    Returns list of sub-command strings, or None if command substitution like $() or backticks is used.
+    """
+    if "$(" in command or "`" in command:
+        return None
+
+    pattern = r'''((?:[^"'&|;]+|'[^']*'|"[^"]*")+)|(&&|\|\||[;&|])'''
+    tokens = re.findall(pattern, command)
+    sub_commands = []
+    for token, _ in tokens:
+        t = token.strip()
+        if t:
+            sub_commands.append(t)
+    return sub_commands if sub_commands else [command]
+
+
+def _classify_single_command(cmd: str, safe_commands: list[str], permission_mode: str) -> SafetyLevel:
+    """Classify a single atomic command without chaining operators."""
+    cmd_base = cmd.split()[0] if cmd else ""
+
+    # Check explicitly safe commands / prefixes
+    if cmd_base in safe_commands or cmd in safe_commands:
+        return SafetyLevel.SAFE
+    for safe in safe_commands:
+        if cmd == safe or cmd.startswith(safe + " "):
+            return SafetyLevel.SAFE
+
+    # Read-only commands are generally safe
+    read_only_starts = (
+        "ls", "dir", "cat", "type", "echo", "pwd", "grep", "find",
+        "head", "tail", "less", "more", "wc", "sort", "uniq", "which", "where",
+    )
+    if cmd_base in read_only_starts:
+        return SafetyLevel.SAFE
+
+    # In auto-test mode, test runners are auto-approved
+    if permission_mode == "auto-test":
+        test_runners = ("pytest", "python -m pytest", "npm test", "yarn test", "jest")
+        if any(cmd == runner or cmd.startswith(runner + " ") for runner in test_runners):
+            return SafetyLevel.SAFE
+
+    return SafetyLevel.NEEDS_APPROVAL
+
+
 def classify_command(command: str, safe_commands: list[str], blocked_patterns: list[str], permission_mode: str) -> SafetyLevel:
     """Classify a raw shell command string's safety level.
+
+    Handles compound commands (&&, ||, ;, |, &) by evaluating every sub-command.
+    If any sub-command is BLOCKED, the entire command is BLOCKED.
+    If any sub-command NEEDS_APPROVAL, the entire command NEEDS_APPROVAL.
+    Only if ALL sub-commands are SAFE is the command classified as SAFE.
 
     Args:
         command:          The command string the agent wants to execute.
@@ -86,26 +138,24 @@ def classify_command(command: str, safe_commands: list[str], blocked_patterns: l
     if permission_mode == "yolo":
         return SafetyLevel.SAFE
 
-    # Check explicitly safe commands / prefixes.
-    cmd_base = cmd.split()[0] if cmd else ""
-    if cmd_base in safe_commands or cmd in safe_commands:
-        return SafetyLevel.SAFE
+    # Split compound commands and check for command substitution
+    sub_commands = _split_compound_command(cmd)
+    if sub_commands is None:
+        # Command contains $() or backticks; require approval
+        return SafetyLevel.NEEDS_APPROVAL
 
-    # Read-only commands are generally safe.
-    read_only_starts = (
-        "ls", "dir", "cat", "type", "echo", "pwd", "grep", "find",
-        "head", "tail", "less", "more", "wc", "sort", "uniq", "which", "where",
-    )
-    if cmd_base in read_only_starts:
-        return SafetyLevel.SAFE
+    # Evaluate each sub-command
+    for sub_cmd in sub_commands:
+        # Re-check blocked patterns on trimmed sub-command
+        for pattern in blocked_patterns:
+            if pattern in sub_cmd:
+                return SafetyLevel.BLOCKED
 
-    # In auto-test mode, test runners are auto-approved.
-    if permission_mode == "auto-test":
-        test_runners = ("pytest", "python -m pytest", "npm test", "yarn test", "jest")
-        if any(cmd.startswith(runner) for runner in test_runners):
-            return SafetyLevel.SAFE
+        sub_level = _classify_single_command(sub_cmd, safe_commands, permission_mode)
+        if sub_level != SafetyLevel.SAFE:
+            return sub_level
 
-    return SafetyLevel.NEEDS_APPROVAL
+    return SafetyLevel.SAFE
 
 
 class PermissionChecker:
