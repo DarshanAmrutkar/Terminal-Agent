@@ -6,6 +6,7 @@ import uuid
 
 from .base import Tool, ToolResult, resolve_safe_path
 from .registry import register_tool
+from ..utils.syntax_gate import SyntaxGate
 
 
 def _write_file_sync(file_path: Path, content: str, create_dirs: bool) -> tuple[int, bool]:
@@ -55,6 +56,10 @@ class WriteFileTool(Tool):
                 "create_dirs": {
                     "type": "boolean",
                     "description": "Whether to create parent directories if they don't exist. Defaults to True."
+                },
+                "bypass_syntax_check": {
+                    "type": "boolean",
+                    "description": "Bypass pre-commit syntax validation (only use if writing intentional templates or non-standard syntax). Defaults to False."
                 }
             },
             "required": ["path", "content"]
@@ -69,11 +74,21 @@ class WriteFileTool(Tool):
         path: str, 
         content: str, 
         create_dirs: bool = True, 
+        bypass_syntax_check: bool = False,
         **kwargs
     ) -> ToolResult:
         file_path, err = resolve_safe_path(path)
         if err or file_path is None:
             return ToolResult(output=err or "Invalid path", is_error=True)
+
+        if not bypass_syntax_check:
+            check = SyntaxGate.validate(file_path, content)
+            if not check.is_valid:
+                return ToolResult(
+                    output=check.formatted_feedback,
+                    is_error=True,
+                    metadata={"syntax_error": True, "error_type": check.error_type}
+                )
 
         try:
             bytes_written, is_new = await asyncio.to_thread(

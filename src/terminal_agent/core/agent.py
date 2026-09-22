@@ -41,6 +41,7 @@ from terminal_agent.utils.display import (
     display_agent_message,
 )
 from terminal_agent.utils.permissions import PermissionChecker, PermissionOutcome
+from terminal_agent.core.reflexion import ReflexionMemory
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,25 @@ class Agent:
         self.registry = ToolRegistry()
         self.registry.load_defaults()
 
+        # Initialize execution sandbox
+        from terminal_agent.sandbox import SandboxPolicy, create_sandbox
+        sandbox_policy = SandboxPolicy(
+            working_dir=Path(self.working_dir),
+            allow_network=getattr(config, "sandbox_allow_network", True),
+            timeout_seconds=getattr(config, "timeout", 120),
+        )
+        self.sandbox = create_sandbox(
+            mode=getattr(config, "sandbox_mode", "local"),
+            working_dir=self.working_dir,
+            policy=sandbox_policy,
+            docker_image=getattr(config, "sandbox_docker_image", "python:3.12-slim"),
+        )
+        if "run_command" in self.registry:
+            run_cmd = self.registry.get("run_command")
+            if hasattr(run_cmd, "sandbox"):
+                run_cmd.sandbox = self.sandbox
+                run_cmd.working_dir = Path(self.working_dir)
+
         # Initialize permission checker.
         # PermissionChecker owns all policy decisions about whether a tool call
         # can proceed. Agent delegates to it without knowing tool-specific rules.
@@ -86,6 +106,9 @@ class Agent:
         
         # Initialize cost tracker
         self.cost_tracker = CostTracker(model_name=config.model_name)
+        
+        # Initialize Reflexion episodic failure memory buffer
+        self.reflexion_memory = ReflexionMemory(max_episodes=5)
         
         # Token tracking for real-time status bar updates
         self._last_input_tokens = 0
@@ -200,6 +223,7 @@ class Agent:
         import terminal_agent.tools.grep_search    # noqa: F401
         import terminal_agent.tools.list_directory # noqa: F401
         import terminal_agent.tools.run_command    # noqa: F401
+        import terminal_agent.tools.repo_map       # noqa: F401
 
     def _load_system_prompt(self) -> str:
         """Load the system prompt template and fill in placeholders."""
@@ -214,7 +238,7 @@ class Agent:
                 "Current directory: {cwd}\n\n{repo_map}"
             )
         
-        # Build a basic repo map (file listing)
+        # Build an AST-driven repository symbol map
         repo_map = self._build_repo_map()
         
         return template.format(
@@ -223,38 +247,52 @@ class Agent:
         )
 
     def _build_repo_map(self) -> str:
-        """Build a simple repository file listing for context."""
+        """Build an architectural symbol skeleton and dependency map for context."""
         try:
-            repo_path = Path(self.working_dir)
-            ignore_dirs = {
-                ".git", "__pycache__", "node_modules", ".venv", "venv",
-                ".mypy_cache", ".pytest_cache", ".ruff_cache", "dist",
-                "build", ".egg-info", ".tox",
-            }
-            
-            files = []
-            for p in sorted(repo_path.rglob("*")):
-                # Skip ignored directories
-                if any(part in ignore_dirs for part in p.parts):
-                    continue
-                if p.is_file():
-                    rel = p.relative_to(repo_path)
-                    files.append(str(rel))
-            
-            if not files:
-                return "(empty repository)"
-            
-            # Limit to 200 files to avoid huge prompts
-            if len(files) > 200:
-                listing = "\n".join(f"  {f}" for f in files[:200])
-                listing += f"\n  ... and {len(files) - 200} more files"
-            else:
-                listing = "\n".join(f"  {f}" for f in files)
-            
-            return listing
+            from terminal_agent.repo.map_builder import RepoMapBuilder
+            builder = RepoMapBuilder(working_directory=self.working_dir)
+            return builder.build_map(max_tokens=1500)
         except Exception as e:
             logger.warning(f"Failed to build repo map: {e}")
-            return "(could not read repository)"
+            return f"(error generating repository map: {e})"
+
+    async def solve_task(self, task_description: str, test_command: str | None = None) -> dict[str, Any]:
+        """High-level task solver implementing the Two-Tier architecture (Agentless vs ReAct).
+        
+        Tier 1: Agentless Fast Path (Localize -> Patch -> Validate) for focused bug-fixing.
+        Tier 2: Autonomous ReAct loop with full tool access and Reflexion episodic memory.
+        """
+        from terminal_agent.core.fast_path import AgentlessFastPath
+        from terminal_agent.core.config import ExecutionMode
+
+        if self.config.execution_mode in (ExecutionMode.FAST_PATH, ExecutionMode.AUTO):
+            fast_path = AgentlessFastPath(
+                provider=self.provider,
+                working_directory=self.working_dir
+            )
+            fp_result = await fast_path.execute(task_description, test_command=test_command)
+            if fp_result.success:
+                console.print(f"[bold green]⚡ Fast-Path Success:[/bold green] {fp_result.explanation}")
+                return {
+                    "mode": "fast_path",
+                    "success": True,
+                    "result": fp_result,
+                }
+            elif self.config.execution_mode == ExecutionMode.FAST_PATH:
+                return {
+                    "mode": "fast_path",
+                    "success": False,
+                    "result": fp_result,
+                }
+            logger.info(f"Fast-path did not resolve task ({fp_result.explanation}). Escalating to Tier 2 ReAct.")
+
+        # Fallback to Tier 2: Autonomous ReAct loop
+        await self.process_message(task_description)
+        return {
+            "mode": "react",
+            "success": True,
+            "session": self.session,
+        }
 
     async def process_message(self, user_input: str) -> None:
         """Process a user message through the full ReAct loop.
@@ -319,7 +357,13 @@ class Agent:
                 self.session.update_token_usage(response.input_tokens, response.output_tokens)
             
             # Track token usage in cost tracker
-            self.cost_tracker.add_usage(response.input_tokens, response.output_tokens, model_name=self.config.model_name)
+            self.cost_tracker.add_usage(
+                response.input_tokens, 
+                response.output_tokens, 
+                cache_creation_tokens=response.cache_creation_input_tokens,
+                cache_read_tokens=response.cache_read_input_tokens,
+                model_name=self.config.model_name
+            )
             
             # Add assistant message to history
             self.session.add_assistant_message(response.message)
@@ -359,6 +403,8 @@ class Agent:
         current_tool_call: ToolCall | None = None
         input_tokens = 0
         output_tokens = 0
+        cache_creation_tokens = 0
+        cache_read_tokens = 0
         stop_reason = None
         
         started_text = False
@@ -391,6 +437,8 @@ class Agent:
                 if event.usage:
                     input_tokens = event.usage.get("input_tokens", 0)
                     output_tokens = event.usage.get("output_tokens", 0)
+                    cache_creation_tokens = event.usage.get("cache_creation_input_tokens", 0)
+                    cache_read_tokens = event.usage.get("cache_read_input_tokens", 0)
                     # Call the callback immediately so UI can update in real-time
                     if on_usage:
                         on_usage(input_tokens, output_tokens)
@@ -421,6 +469,8 @@ class Agent:
             message=message,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            cache_creation_input_tokens=cache_creation_tokens,
+            cache_read_input_tokens=cache_read_tokens,
             stop_reason="tool_use" if tool_calls else "end_turn",
         )
 
@@ -533,6 +583,21 @@ class Agent:
                 output=f"Error executing {tool_call.name}: {str(e)}",
                 is_error=True,
             )
+
+        # Reflexion failure recording & verbal self-reflection reinforcement
+        if result.is_error:
+            episode = self.reflexion_memory.record_failure(
+                tool_name=tool_call.name,
+                args=tool_call.arguments,
+                error_output=result.output,
+            )
+            result = ToolResult(
+                output=f"{result.output}\n\n[Reflexion Self-Correction Advice]: {episode.reflection}",
+                is_error=True,
+                metadata=result.metadata,
+            )
+        else:
+            self.reflexion_memory.mark_resolved(tool_call.name)
 
         # Display the result (truncated for readability in the terminal).
         display_tool_result(

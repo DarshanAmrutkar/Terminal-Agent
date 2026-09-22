@@ -51,28 +51,63 @@ class CostTracker:
         self.model_name = model_name
         self.total_input_tokens: int = 0
         self.total_output_tokens: int = 0
+        self.total_cache_creation_tokens: int = 0
+        self.total_cache_read_tokens: int = 0
         self.total_cost_usd: float = 0.0
+        self.total_saved_usd: float = 0.0
         self.usage_history: list[dict[str, Any]] = []
 
-    def add_usage(self, input_tokens: int, output_tokens: int, model_name: str | None = None) -> None:
-        """Add token counts from one LLM response and calculate cost with active model pricing."""
+    def add_usage(
+        self, 
+        input_tokens: int, 
+        output_tokens: int, 
+        cache_creation_tokens: int = 0,
+        cache_read_tokens: int = 0,
+        model_name: str | None = None
+    ) -> None:
+        """Add token counts from one LLM response and calculate cost with active model pricing,
+        taking prompt caching discounts (90% read discount, 1.25x write multiplier) into account."""
         model = model_name or self.model_name
         self.total_input_tokens += input_tokens
         self.total_output_tokens += output_tokens
+        self.total_cache_creation_tokens += cache_creation_tokens
+        self.total_cache_read_tokens += cache_read_tokens
 
         turn_cost = 0.0
+        turn_saved = 0.0
         pricing = self.PRICING.get(model)
         if pricing:
-            input_cost = (input_tokens / 1000.0) * pricing["input"]
-            output_cost = (output_tokens / 1000.0) * pricing["output"]
-            turn_cost = input_cost + output_cost
+            base_input = pricing["input"]
+            base_output = pricing["output"]
+            
+            # Non-cached regular input
+            uncached_input = max(0, input_tokens - cache_creation_tokens - cache_read_tokens)
+            uncached_cost = (uncached_input / 1000.0) * base_input
+            
+            # Cache creation cost: 1.25x base input rate (Anthropic pricing spec)
+            cache_creation_cost = (cache_creation_tokens / 1000.0) * (base_input * 1.25)
+            
+            # Cache read cost: 0.10x base input rate (90% discount!)
+            cache_read_cost = (cache_read_tokens / 1000.0) * (base_input * 0.10)
+            
+            output_cost = (output_tokens / 1000.0) * base_output
+            turn_cost = uncached_cost + cache_creation_cost + cache_read_cost + output_cost
+
+            # Calculate savings from cache read tokens vs standard billing
+            if cache_read_tokens > 0:
+                standard_cost = (cache_read_tokens / 1000.0) * base_input
+                turn_saved = max(0.0, standard_cost - cache_read_cost)
 
         self.total_cost_usd += turn_cost
+        self.total_saved_usd += turn_saved
         self.usage_history.append({
             "model": model,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
+            "cache_creation_tokens": cache_creation_tokens,
+            "cache_read_tokens": cache_read_tokens,
             "cost": turn_cost,
+            "saved": turn_saved,
         })
 
     def get_session_cost(self) -> float:
@@ -90,8 +125,15 @@ class CostTracker:
             "" if self.is_model_known()
             else f" [dim](pricing unavailable for {self.model_name})[/dim]"
         )
+        cache_info = ""
+        if self.total_cache_read_tokens > 0:
+            cache_info = f" ({self.total_cache_read_tokens:,} cached)"
+        savings_info = ""
+        if self.total_saved_usd > 0.0:
+            savings_info = f" [green](Saved ${self.total_saved_usd:.4f} via prompt caching)[/green]"
+
         return (
-            f"Tokens Used: {self.total_input_tokens:,} in / "
+            f"Tokens Used: {self.total_input_tokens:,} in{cache_info} / "
             f"{self.total_output_tokens:,} out\n"
-            f"Estimated Session Cost: ${cost:.4f}{pricing_note}"
+            f"Estimated Session Cost: ${cost:.4f}{pricing_note}{savings_info}"
         )

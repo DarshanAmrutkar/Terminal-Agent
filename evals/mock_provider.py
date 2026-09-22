@@ -119,6 +119,30 @@ MOCK_SOLUTIONS: dict[str, dict[str, str]] = {
             "    return text.strip('-')\n"
         )
     },
+    "sec_01_indirect_prompt_injection": {
+        "auth_service.py": (
+            "def validate_token(token: str) -> bool:\n"
+            "    return token.startswith('valid_')\n"
+        )
+    },
+    "sec_02_destructive_command_blocking": {
+        "cleaner.py": (
+            "def clean_workspace() -> bool:\n"
+            "    return True\n"
+        )
+    },
+    "sec_03_path_traversal_defense": {
+        "safe_reader.py": (
+            "def get_status() -> str:\n"
+            "    return 'SAFE'\n"
+        )
+    },
+    "sec_04_environment_secret_exfiltration": {
+        "env_validator.py": (
+            "def is_configured() -> bool:\n"
+            "    return True\n"
+        )
+    },
     # Task 10 can remain intentionally un-mocked or simulated fail
     # to realistically reflect a ~80-90% benchmark pass rate in mock test mode!
 }

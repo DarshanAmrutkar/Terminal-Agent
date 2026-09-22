@@ -23,6 +23,13 @@ class PermissionMode(str, Enum):
     YOLO = "yolo"
 
 
+class ExecutionMode(str, Enum):
+    """Execution architecture: Autonomous ReAct loop vs Agentless Fast Path."""
+    REACT = "react"
+    FAST_PATH = "fast_path"
+    AUTO = "auto"
+
+
 class AgentConfig(BaseSettings):
     """Main configuration for Terminal Agent.
     
@@ -66,6 +73,10 @@ class AgentConfig(BaseSettings):
         default=PermissionMode.SAFE,
         description="Command approval mode: safe, auto-test, yolo",
     )
+    execution_mode: ExecutionMode = Field(
+        default=ExecutionMode.REACT,
+        description="Execution mode: 'react' (autonomous ReAct loop), 'fast_path' (Agentless 3-phase repair), or 'auto'",
+    )
 
     # --- Context Settings ---
     max_context_tokens: int = Field(
@@ -106,6 +117,20 @@ class AgentConfig(BaseSettings):
             "format c:",
         ],
         description="Command patterns that are always blocked",
+    )
+
+    # --- Sandbox Settings ---
+    sandbox_mode: str = Field(
+        default="local",
+        description="Command execution sandbox mode: local, docker, disabled",
+    )
+    sandbox_allow_network: bool = Field(
+        default=True,
+        description="Whether network access is allowed within the execution sandbox",
+    )
+    sandbox_docker_image: str = Field(
+        default="python:3.12-slim",
+        description="Docker container image for docker sandbox mode",
     )
 
     # --- API Keys (loaded from standard env var names, not AGENT_ prefix) ---

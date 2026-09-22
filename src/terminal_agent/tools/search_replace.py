@@ -7,9 +7,16 @@ import uuid
 
 from .base import Tool, ToolResult, resolve_safe_path
 from .registry import register_tool
+from ..utils.syntax_gate import SyntaxGate
 
 
-def _search_replace_sync(file_path: Path, path_str: str, search: str, replace: str) -> ToolResult:
+def _search_replace_sync(
+    file_path: Path, 
+    path_str: str, 
+    search: str, 
+    replace: str,
+    bypass_syntax_check: bool = False
+) -> ToolResult:
     if not file_path.exists() or not file_path.is_file():
         return ToolResult(
             output=f"Error: File '{path_str}' does not exist or is not a file.",
@@ -74,6 +81,18 @@ def _search_replace_sync(file_path: Path, path_str: str, search: str, replace: s
     if new_content_norm is not None:
         # Convert back to original line ending style if needed
         final_content = new_content_norm.replace("\n", "\r\n") if uses_crlf else new_content_norm
+
+        if not bypass_syntax_check:
+            check = SyntaxGate.validate(file_path, final_content)
+            if not check.is_valid:
+                return ToolResult(
+                    output=(
+                        f"Error: Proposed search and replace would introduce a syntax error in '{path_str}'.\n\n"
+                        f"{check.formatted_feedback}"
+                    ),
+                    is_error=True,
+                    metadata={"syntax_error": True, "error_type": check.error_type}
+                )
 
         # Atomic write
         tmp_file = file_path.parent / f".tmp_{uuid.uuid4().hex}_{file_path.name}"
@@ -147,6 +166,10 @@ class SearchReplaceTool(Tool):
                 "replace": {
                     "type": "string",
                     "description": "The new text to insert in place of the search text"
+                },
+                "bypass_syntax_check": {
+                    "type": "boolean",
+                    "description": "Bypass pre-commit syntax validation (only use if writing intentional templates or non-standard syntax). Defaults to False."
                 }
             },
             "required": ["path", "search", "replace"]
@@ -156,13 +179,27 @@ class SearchReplaceTool(Tool):
     def requires_approval(self) -> bool:
         return True
 
-    async def execute(self, path: str, search: str, replace: str, **kwargs) -> ToolResult:
+    async def execute(
+        self, 
+        path: str, 
+        search: str, 
+        replace: str, 
+        bypass_syntax_check: bool = False, 
+        **kwargs
+    ) -> ToolResult:
         file_path, err = resolve_safe_path(path)
         if err or file_path is None:
             return ToolResult(output=err or "Invalid path", is_error=True)
 
         try:
-            return await asyncio.to_thread(_search_replace_sync, file_path, path, search, replace)
+            return await asyncio.to_thread(
+                _search_replace_sync, 
+                file_path, 
+                path, 
+                search, 
+                replace, 
+                bypass_syntax_check
+            )
         except Exception as e:
             return ToolResult(output=f"Error executing search and replace: {str(e)}", is_error=True)
 

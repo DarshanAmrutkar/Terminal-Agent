@@ -1,0 +1,164 @@
+{
+  "timestamp": "2026-09-22T23:29:24.158964",
+  "provider": "mock",
+  "model_name": "mock-eval-model",
+  "total_tasks": 2,
+  "passed_tasks": 2,
+  "failed_tasks": 0,
+  "pass_rate_pct": 100.0,
+  "total_duration_seconds": 0.44,
+  "total_input_tokens": 800,
+  "total_output_tokens": 250,
+  "total_cost": 0.0031,
+  "results": [
+    {
+      "task_id": "task_01_off_by_one",
+      "task_name": "Fix pagination offset calculation",
+      "passed": true,
+      "category": "bug_fix",
+      "difficulty": "easy",
+      "duration_seconds": 0.24,
+      "iterations": 2,
+      "input_tokens": 400,
+      "output_tokens": 125,
+      "cost": 0.0031,
+      "error_message": null,
+      "test_output": "...                                                                      [100%]\n3 passed in 0.03s",
+      "trial_number": 1,
+      "trajectory": {
+        "total_tool_calls": 1,
+        "unique_tools_used": [
+          "write_file"
+        ],
+        "redundant_file_reads": 0,
+        "failed_tool_calls": 0,
+        "recovery_attempts": 0,
+        "oscillation_detected": false,
+        "tool_sequence": [
+          "write_file"
+        ]
+      },
+      "judge_score": {
+        "code_quality_score": 5.0,
+        "faithfulness_score": 4.5,
+        "overall_score": 4.75,
+        "feedback": "G-Eval: All evaluation steps passed with high confidence",
+        "geval_steps": [
+          {
+            "step": 1,
+            "criterion": "Interface Preservation",
+            "passed": true,
+            "reasoning": "Tests executed and passed; function signature and interfaces intact."
+          },
+          {
+            "step": 2,
+            "criterion": "Type Annotations & Style",
+            "passed": true,
+            "reasoning": "Explicit type hints and standard PEP 8 naming detected in diff."
+          },
+          {
+            "step": 3,
+            "criterion": "Surgical Diff Footprint",
+            "passed": true,
+            "reasoning": "Surgical diff footprint (4 modified lines); minimal refactor risk."
+          },
+          {
+            "step": 4,
+            "criterion": "Documentation Integrity",
+            "passed": true,
+            "reasoning": "Docstring documentation present in modified code."
+          },
+          {
+            "step": 5,
+            "criterion": "Pytest Outcome Truthfulness",
+            "passed": true,
+            "reasoning": "Faithful reporting: Agent correctly reported passing verification."
+          },
+          {
+            "step": 6,
+            "criterion": "Diff-to-Explanation Alignment",
+            "passed": true,
+            "reasoning": "Explanation matches actual code modifications made."
+          }
+        ]
+      }
+    },
+    {
+      "task_id": "task_02_key_error",
+      "task_name": "Handle missing keys in nested config extractor",
+      "passed": true,
+      "category": "bug_fix",
+      "difficulty": "easy",
+      "duration_seconds": 0.2,
+      "iterations": 2,
+      "input_tokens": 400,
+      "output_tokens": 125,
+      "cost": 0.0,
+      "error_message": null,
+      "test_output": "...                                                                      [100%]\n3 passed in 0.03s",
+      "trial_number": 1,
+      "trajectory": {
+        "total_tool_calls": 1,
+        "unique_tools_used": [
+          "write_file"
+        ],
+        "redundant_file_reads": 0,
+        "failed_tool_calls": 0,
+        "recovery_attempts": 0,
+        "oscillation_detected": false,
+        "tool_sequence": [
+          "write_file"
+        ]
+      },
+      "judge_score": {
+        "code_quality_score": 5.0,
+        "faithfulness_score": 4.5,
+        "overall_score": 4.75,
+        "feedback": "G-Eval: All evaluation steps passed with high confidence",
+        "geval_steps": [
+          {
+            "step": 1,
+            "criterion": "Interface Preservation",
+            "passed": true,
+            "reasoning": "Tests executed and passed; function signature and interfaces intact."
+          },
+          {
+            "step": 2,
+            "criterion": "Type Annotations & Style",
+            "passed": true,
+            "reasoning": "Explicit type hints and standard PEP 8 naming detected in diff."
+          },
+          {
+            "step": 3,
+            "criterion": "Surgical Diff Footprint",
+            "passed": true,
+            "reasoning": "Surgical diff footprint (5 modified lines); minimal refactor risk."
+          },
+          {
+            "step": 4,
+            "criterion": "Documentation Integrity",
+            "passed": true,
+            "reasoning": "Docstring documentation present in modified code."
+          },
+          {
+            "step": 5,
+            "criterion": "Pytest Outcome Truthfulness",
+            "passed": true,
+            "reasoning": "Faithful reporting: Agent correctly reported passing verification."
+          },
+          {
+            "step": 6,
+            "criterion": "Diff-to-Explanation Alignment",
+            "passed": true,
+            "reasoning": "Explanation matches actual code modifications made."
+          }
+        ]
+      }
+    }
+  ],
+  "trials_per_task": 1,
+  "pass_at_k_pct": null,
+  "pass_all_k_pct": null,
+  "avg_code_quality": 5.0,
+  "avg_faithfulness": 4.5
+}
