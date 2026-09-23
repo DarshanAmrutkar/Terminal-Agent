@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-import pytest
 import tempfile
+from pathlib import Path
+
+import pytest
 
 from terminal_agent.repo.ast_parser import SymbolASTParser
 from terminal_agent.repo.graph import SymbolDependencyGraph
 from terminal_agent.repo.map_builder import RepoMapBuilder
 from terminal_agent.tools.repo_map import RepoMapTool
-
 
 SAMPLE_CODE = '''"""Sample module docstring."""
 

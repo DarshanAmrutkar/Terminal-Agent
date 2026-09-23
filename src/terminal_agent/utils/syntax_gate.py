@@ -1,10 +1,9 @@
 import ast
-from dataclasses import dataclass, field
 import json
-from pathlib import Path
 import subprocess
 import sys
-from typing import List, Optional
+from dataclasses import dataclass, field
+from pathlib import Path
 
 try:
     import tomllib  # Python 3.11+
@@ -16,13 +15,13 @@ except ImportError:
 class SyntaxCheckResult:
     """Outcome of pre-commit syntax validation."""
     is_valid: bool
-    error_type: Optional[str] = None
-    error_message: Optional[str] = None
-    line_number: Optional[int] = None
-    column: Optional[int] = None
-    snippet: Optional[str] = None
+    error_type: str | None = None
+    error_message: str | None = None
+    line_number: int | None = None
+    column: int | None = None
+    snippet: str | None = None
     formatted_feedback: str = ""
-    warnings: List[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 class SyntaxGate:
@@ -95,7 +94,7 @@ class SyntaxGate:
                 formatted_feedback=feedback.strip()
             )
 
-        warnings: List[str] = []
+        warnings: list[str] = []
         if check_linter:
             warnings = cls._run_ruff_check(filename, content)
 
@@ -146,7 +145,7 @@ class SyntaxGate:
         except Exception as e:
             feedback = (
                 f"[Syntax Gate: Rejected Edit]\n"
-                f"TOMLDecodeError in '{filename}': {str(e)}\n\n"
+                f"TOMLDecodeError in '{filename}': {e!s}\n\n"
                 f"The proposed TOML was NOT written to disk because it is malformed.\n"
                 f"Please correct the TOML syntax and re-apply."
             )
@@ -158,7 +157,7 @@ class SyntaxGate:
             )
 
     @classmethod
-    def _run_ruff_check(cls, filename: str, content: str) -> List[str]:
+    def _run_ruff_check(cls, filename: str, content: str) -> list[str]:
         """Runs ruff on stdin buffer if available to gather diagnostics."""
         try:
             res = subprocess.run(

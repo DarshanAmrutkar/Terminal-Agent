@@ -24,8 +24,6 @@ Why not just a plain dict in Agent?
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Type
-
 from .base import Tool
 
 # ---------------------------------------------------------------------------
@@ -33,10 +31,10 @@ from .base import Tool
 # ---------------------------------------------------------------------------
 # The @register_tool decorator appends tool *classes* here at import time.
 # Nothing is instantiated. Agent decides when and how to create instances.
-_TOOL_CLASSES: list[Type[Tool]] = []
+_TOOL_CLASSES: list[type[Tool]] = []
 
 
-def register_tool(cls: Type[Tool]) -> Type[Tool]:
+def register_tool(cls: type[Tool]) -> type[Tool]:
     """Decorator that marks a Tool subclass for automatic registration."""
     _TOOL_CLASSES.append(cls)
     return cls
@@ -49,6 +47,7 @@ def discover_builtin_tools() -> None:
     """
     import importlib
     import pkgutil
+
     import terminal_agent.tools as tools_pkg
 
     for _, module_name, _ in pkgutil.iter_modules(tools_pkg.__path__):
@@ -94,7 +93,7 @@ class ToolRegistry:
         """
         self._tools[tool.name] = tool
 
-    def register_class(self, tool_class: Type[Tool]) -> None:
+    def register_class(self, tool_class: type[Tool]) -> None:
         """Instantiate a tool class and register it."""
         self.register(tool_class())
 

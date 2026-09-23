@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
 import json
 import re
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from terminal_agent.llm.base import LLMProvider

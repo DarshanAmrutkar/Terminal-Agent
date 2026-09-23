@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 import fnmatch
 import os
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Sequence
 
 
 @dataclass
@@ -127,12 +126,10 @@ class SandboxBackend(ABC):
     @abstractmethod
     def name(self) -> str:
         """Name of the sandbox backend implementation."""
-        pass
 
     @abstractmethod
     def is_available(self) -> bool:
         """Check if this sandbox backend is functional on the current system."""
-        pass
 
     @abstractmethod
     async def execute(
@@ -142,9 +139,7 @@ class SandboxBackend(ABC):
         timeout: int | None = None,
     ) -> SandboxResult:
         """Execute command within the sandbox according to the configured policy."""
-        pass
 
     async def terminate(self) -> None:
         """Terminate any actively running sandbox process or container."""
-        pass
 

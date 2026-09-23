@@ -8,11 +8,10 @@ to prevent amnesic repetition loops and guide corrective strategies.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
-import json
-import re
-from typing import Any, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -41,14 +40,14 @@ class ReflexionMemory:
 
     def __init__(self, max_episodes: int = 5) -> None:
         self.max_episodes = max_episodes
-        self.episodes: List[FailureEpisode] = []
+        self.episodes: list[FailureEpisode] = []
 
     def record_failure(
         self,
         tool_name: str,
         args: dict[str, Any] | None,
         error_output: str,
-        custom_reflection: Optional[str] = None,
+        custom_reflection: str | None = None,
     ) -> FailureEpisode:
         """Synthesize a verbal reflection and store the failure episode."""
         action_summary = self._summarize_action(tool_name, args or {})
@@ -82,7 +81,7 @@ class ReflexionMemory:
 
         return episode
 
-    def mark_resolved(self, tool_name: Optional[str] = None) -> int:
+    def mark_resolved(self, tool_name: str | None = None) -> int:
         """Mark failures for a specific tool or all pending failures as resolved."""
         count = 0
         for ep in self.episodes:
@@ -95,7 +94,7 @@ class ReflexionMemory:
         """True if there are unresolved failure episodes in memory."""
         return any(not ep.resolved for ep in self.episodes)
 
-    def get_active_episodes(self) -> List[FailureEpisode]:
+    def get_active_episodes(self) -> list[FailureEpisode]:
         """Return list of unresolved failure episodes."""
         return [ep for ep in self.episodes if not ep.resolved]
 

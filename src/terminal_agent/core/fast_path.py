@@ -10,17 +10,16 @@ Autonomous ReAct when needed.
 from __future__ import annotations
 
 import json
+import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-import re
-from typing import Any, Callable, List, Optional, Tuple
 
 from terminal_agent.llm.base import LLMProvider
 from terminal_agent.llm.message import Message
-from terminal_agent.tools.search_replace import _search_replace_sync
-from terminal_agent.tools.base import resolve_safe_path
-from terminal_agent.sandbox.local import LocalRestrictedSandbox
 from terminal_agent.sandbox.base import SandboxBackend, SandboxPolicy, SandboxResult
+from terminal_agent.sandbox.local import LocalRestrictedSandbox
+from terminal_agent.tools.search_replace import _search_replace_sync
 
 
 @dataclass
@@ -28,7 +27,7 @@ class FastPathResult:
     """Outcome of an Agentless Fast-Path repair run."""
     success: bool
     phase_reached: str  # "localization", "repair", "validation", "completed"
-    localized_files: List[str] = field(default_factory=list)
+    localized_files: list[str] = field(default_factory=list)
     patch_applied: bool = False
     tests_passed: bool = False
     explanation: str = ""
@@ -43,14 +42,14 @@ class AgentlessFastPath:
         provider: LLMProvider, 
         working_directory: str | Path,
         max_candidates: int = 3,
-        sandbox_factory: Optional[Callable[[SandboxPolicy], SandboxBackend]] = None,
+        sandbox_factory: Callable[[SandboxPolicy], SandboxBackend] | None = None,
     ) -> None:
         self.provider = provider
         self.working_dir = Path(working_directory).resolve()
         self.max_candidates = max_candidates
         self.sandbox_factory = sandbox_factory
 
-    def localize(self, task_description: str) -> List[str]:
+    def localize(self, task_description: str) -> list[str]:
         """Phase 1: Identify candidate files using AST and keyword relevance."""
         task_terms = set(re.findall(r"\b[a-zA-Z_][a-zA-Z0-9_]{3,}\b", task_description.lower()))
         # Filter out common stop words
@@ -95,7 +94,7 @@ class AgentlessFastPath:
         ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         return [f for f, _ in ranked[:self.max_candidates]]
 
-    async def repair(self, task_description: str, rel_path: str) -> Tuple[bool, str]:
+    async def repair(self, task_description: str, rel_path: str) -> tuple[bool, str]:
         """Phase 2: Synthesize a surgical search-and-replace patch."""
         full_path = self.working_dir / rel_path
         if not full_path.exists():
@@ -142,7 +141,7 @@ class AgentlessFastPath:
 
         return not result.is_error, result.output
 
-    async def validate(self, test_command: str) -> Tuple[bool, str]:
+    async def validate(self, test_command: str) -> tuple[bool, str]:
         """Phase 3: Verify the patch using sandboxed automated regression tests."""
         policy = SandboxPolicy(working_dir=self.working_dir, timeout_seconds=60)
         if self.sandbox_factory:
@@ -155,7 +154,7 @@ class AgentlessFastPath:
     async def execute(
         self, 
         task_description: str, 
-        test_command: Optional[str] = None
+        test_command: str | None = None
     ) -> FastPathResult:
         """Run the full 3-phase Fast Path pipeline."""
         # 1. Localization

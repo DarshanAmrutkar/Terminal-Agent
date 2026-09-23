@@ -33,8 +33,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from terminal_agent.tools.base import Tool, ToolResult
 from terminal_agent.llm.message import ToolCall
+from terminal_agent.tools.base import Tool
 
 
 class SafetyLevel(Enum):
@@ -64,6 +64,7 @@ class PermissionDecision:
 
 
 import re
+
 
 def _split_compound_command(command: str) -> list[str] | None:
     """Split a compound command by shell operators (&&, ||, ;, |, &).

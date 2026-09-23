@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 import shutil
 import subprocess
 import time
+from pathlib import Path
 
 from terminal_agent.sandbox.base import SandboxBackend, SandboxPolicy, SandboxResult
 from terminal_agent.tools.base import resolve_safe_path
@@ -75,7 +75,7 @@ class DockerSandbox(SandboxBackend):
         # 2. Build Docker CLI command
         docker_args = [
             "docker", "run", "--rm",
-            "-v", f"{str(self.policy.working_dir)}:/workspace:rw",
+            "-v", f"{self.policy.working_dir!s}:/workspace:rw",
             "-w", "/workspace",
             "--memory=1g",
             "--cpus=1.0",
@@ -108,7 +108,7 @@ class DockerSandbox(SandboxBackend):
                     process.communicate(), timeout=effective_timeout
                 )
                 timed_out = False
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 process.kill()
                 await process.wait()
                 duration = time.perf_counter() - start_time
@@ -148,7 +148,7 @@ class DockerSandbox(SandboxBackend):
             duration = time.perf_counter() - start_time
             return SandboxResult(
                 stdout="",
-                stderr=f"Docker execution failed: {str(e)}",
+                stderr=f"Docker execution failed: {e!s}",
                 returncode=1,
                 duration_seconds=round(duration, 2),
             )

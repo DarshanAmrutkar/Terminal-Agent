@@ -5,15 +5,16 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+
 import pytest
 
-from terminal_agent.sandbox.base import SandboxPolicy
-from terminal_agent.sandbox.local import LocalRestrictedSandbox
-from terminal_agent.core.config import AgentConfig
 from terminal_agent.core.agent import Agent
+from terminal_agent.core.config import AgentConfig
 from terminal_agent.core.session_store import SessionStore
 from terminal_agent.llm.base import LLMProvider
-from terminal_agent.llm.message import Message, StreamEvent, LLMResponse
+from terminal_agent.llm.message import LLMResponse, Message, StreamEvent
+from terminal_agent.sandbox.base import SandboxPolicy
+from terminal_agent.sandbox.local import LocalRestrictedSandbox
 
 
 class HangingProvider(LLMProvider):

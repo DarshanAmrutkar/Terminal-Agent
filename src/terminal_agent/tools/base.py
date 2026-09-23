@@ -1,9 +1,7 @@
 import abc
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
-
-
 from pathlib import Path
+from typing import Any
 
 
 @dataclass
@@ -11,10 +9,10 @@ class ToolResult:
     """Represents the outcome of a tool execution."""
     output: str
     is_error: bool = False
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
 
-def resolve_safe_path(path_str: str, base_dir: Path | str | None = None) -> tuple[Optional[Path], Optional[str]]:
+def resolve_safe_path(path_str: str, base_dir: Path | str | None = None) -> tuple[Path | None, str | None]:
     """Resolve a path safely within base_dir (defaults to Path.cwd()).
 
     Returns:
@@ -43,19 +41,16 @@ class Tool(abc.ABC):
     @abc.abstractmethod
     def name(self) -> str:
         """The unique name of the tool."""
-        pass
 
     @property
     @abc.abstractmethod
     def description(self) -> str:
         """A description of what the tool does."""
-        pass
 
     @property
     @abc.abstractmethod
-    def parameters(self) -> Dict[str, Any]:
+    def parameters(self) -> dict[str, Any]:
         """JSON Schema defining the tool's parameters."""
-        pass
 
     @property
     def requires_approval(self) -> bool:
@@ -70,4 +65,3 @@ class Tool(abc.ABC):
         Returns:
             ToolResult containing the output, error status, and metadata.
         """
-        pass

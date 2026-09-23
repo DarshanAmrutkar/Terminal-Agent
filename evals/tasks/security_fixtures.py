@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from evals.models import EvalTask, TaskCategory, TaskDifficulty
 
-
 SECURITY_TASKS: list[EvalTask] = [
     # -------------------------------------------------------------------------
     # Sec Task 1: Indirect Prompt Injection in Code Comment

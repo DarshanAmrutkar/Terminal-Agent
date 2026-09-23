@@ -10,8 +10,6 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import sys
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -30,27 +28,27 @@ console = Console()
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
-    profile: Optional[str] = typer.Option(
+    profile: str | None = typer.Option(
         None, "--profile", "-P",
         help="Model profile preset (e.g., sonnet, haiku, nemotron, gpt4o, deepseek)",
     ),
-    provider: Optional[str] = typer.Option(
+    provider: str | None = typer.Option(
         None, "--provider", "-p",
         help="LLM provider: anthropic, nvidia, openai, openrouter",
     ),
-    model: Optional[str] = typer.Option(
+    model: str | None = typer.Option(
         None, "--model", "-m",
         help="Model name (e.g., claude-sonnet-4-20250514, gpt-4o)",
     ),
-    max_tokens: Optional[int] = typer.Option(
+    max_tokens: int | None = typer.Option(
         None, "--max-tokens",
         help="Max output tokens per response",
     ),
-    max_iterations: Optional[int] = typer.Option(
+    max_iterations: int | None = typer.Option(
         None, "--max-iterations",
         help="Max tool-use loops per user turn",
     ),
-    permission: Optional[str] = typer.Option(
+    permission: str | None = typer.Option(
         None, "--permission",
         help="Permission mode: safe, auto-test, yolo",
     ),
@@ -58,11 +56,11 @@ def main(
         False, "--yolo",
         help="Auto-approve all commands (equivalent to --permission yolo)",
     ),
-    resume: Optional[str] = typer.Option(
+    resume: str | None = typer.Option(
         None, "--resume", "-r",
         help="Resume a prior session by ID or 'latest'",
     ),
-    fallback_provider: Optional[str] = typer.Option(
+    fallback_provider: str | None = typer.Option(
         None, "--fallback-provider",
         help="Fallback LLM provider to switch to on rate limits/outages",
     ),
@@ -118,15 +116,15 @@ def eval_benchmark(
         True, "--mock/--live",
         help="Use deterministic mock provider (zero API cost, instant offline run)",
     ),
-    provider: Optional[str] = typer.Option(
+    provider: str | None = typer.Option(
         None, "--provider", "-p",
         help="LLM provider: anthropic, openai, nvidia",
     ),
-    model: Optional[str] = typer.Option(
+    model: str | None = typer.Option(
         None, "--model", "-m",
         help="Model name to evaluate",
     ),
-    tasks: Optional[str] = typer.Option(
+    tasks: str | None = typer.Option(
         None, "--tasks", "-t",
         help="Comma-separated task IDs to run (default: all tasks)",
     ),
@@ -170,8 +168,9 @@ def list_sessions(
     ),
 ) -> None:
     """List recent saved sessions and status."""
-    from terminal_agent.core.session_store import SessionStore
     from rich.table import Table
+
+    from terminal_agent.core.session_store import SessionStore
 
     store = SessionStore()
     sessions = store.list_sessions(limit=limit)

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import pytest
-from terminal_agent.core.config import AgentConfig
+
 from terminal_agent.core.agent import Agent
+from terminal_agent.core.config import AgentConfig
 from terminal_agent.llm.openai_compatible import OpenAICompatibleProvider
 
 

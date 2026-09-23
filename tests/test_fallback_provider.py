@@ -1,11 +1,12 @@
 """Tests for LLM FallbackProvider and automated circuit breaker."""
 
+from collections.abc import AsyncGenerator
+
 import pytest
-from typing import AsyncGenerator
 
 from terminal_agent.llm.base import LLMProvider
-from terminal_agent.llm.fallback import FallbackProvider, CircuitState, is_failover_trigger
-from terminal_agent.llm.message import Message, StreamEvent, LLMResponse
+from terminal_agent.llm.fallback import CircuitState, FallbackProvider, is_failover_trigger
+from terminal_agent.llm.message import LLMResponse, Message, StreamEvent
 
 
 class MockProvider(LLMProvider):

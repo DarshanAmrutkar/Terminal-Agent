@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 from terminal_agent.repo.ast_parser import FileSymbols, SymbolASTParser, SymbolInfo
 from terminal_agent.repo.graph import SymbolDependencyGraph
-
 
 DEFAULT_IGNORE_DIRS = {
     ".git", "__pycache__", "node_modules", ".venv", "venv", "env",

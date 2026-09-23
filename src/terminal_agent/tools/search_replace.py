@@ -1,13 +1,12 @@
 import asyncio
 import difflib
-import os
-from pathlib import Path
-from typing import Any, Dict
 import uuid
+from pathlib import Path
+from typing import Any
 
+from ..utils.syntax_gate import SyntaxGate
 from .base import Tool, ToolResult, resolve_safe_path
 from .registry import register_tool
-from ..utils.syntax_gate import SyntaxGate
 
 
 def _search_replace_sync(
@@ -151,7 +150,7 @@ class SearchReplaceTool(Tool):
         return "Replace an exact block of text in a file with new text."
 
     @property
-    def parameters(self) -> Dict[str, Any]:
+    def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -201,5 +200,5 @@ class SearchReplaceTool(Tool):
                 bypass_syntax_check
             )
         except Exception as e:
-            return ToolResult(output=f"Error executing search and replace: {str(e)}", is_error=True)
+            return ToolResult(output=f"Error executing search and replace: {e!s}", is_error=True)
 

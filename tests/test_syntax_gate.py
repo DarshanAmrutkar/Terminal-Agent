@@ -1,11 +1,12 @@
 import os
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
 import pytest
 
-from terminal_agent.utils.syntax_gate import SyntaxGate, SyntaxCheckResult
-from terminal_agent.tools.write_file import WriteFileTool
 from terminal_agent.tools.search_replace import SearchReplaceTool
+from terminal_agent.tools.write_file import WriteFileTool
+from terminal_agent.utils.syntax_gate import SyntaxGate
 
 
 def test_syntax_gate_valid_python():

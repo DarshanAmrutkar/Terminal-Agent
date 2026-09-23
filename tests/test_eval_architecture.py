@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import pytest
-
 from evals.judge import CodeJudge, JudgeScore
 from evals.models import EvalReport, EvalResult
 from evals.tasks.security_fixtures import get_security_tasks
-from evals.trajectory import TrajectoryAnalyzer, TrajectoryMetrics
+from evals.trajectory import TrajectoryAnalyzer
 from terminal_agent.llm.message import Message, ToolCall, ToolResultContent
 
 

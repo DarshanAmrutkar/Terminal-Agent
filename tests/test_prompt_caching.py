@@ -1,6 +1,7 @@
 import pytest
-from terminal_agent.llm.message import Message, Role, ToolCall, LLMResponse, StreamEvent
+
 from terminal_agent.llm.anthropic import AnthropicProvider
+from terminal_agent.llm.message import LLMResponse, Message
 from terminal_agent.utils.cost import CostTracker
 
 

@@ -1,25 +1,25 @@
-import asyncio
 import os
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
 import pytest
 
-from terminal_agent.core.config import AgentConfig
-from terminal_agent.core.session import Session
 from terminal_agent.core.agent import Agent
+from terminal_agent.core.config import AgentConfig
 from terminal_agent.core.events import (
     AgentEventListener,
     TextDeltaEvent,
-    ToolCallStartEvent,
     ToolCallEndEvent,
-    TurnStartEvent,
+    ToolCallStartEvent,
     TurnEndEvent,
+    TurnStartEvent,
 )
+from terminal_agent.core.session import Session
 from terminal_agent.llm.base import LLMProvider
-from terminal_agent.llm.message import Message, ToolCall, LLMResponse
+from terminal_agent.llm.message import LLMResponse, Message, ToolCall
 from terminal_agent.llm.registry import ProviderRegistry
+from terminal_agent.tools.registry import ToolRegistry
 from terminal_agent.utils.approval import AutoApprovalHandler
-from terminal_agent.tools.registry import discover_builtin_tools, ToolRegistry
 
 
 class DummyProvider(LLMProvider):

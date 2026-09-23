@@ -7,7 +7,8 @@ registered without modifying Agent internals.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Dict, List
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from terminal_agent.llm.base import LLMProvider
 
@@ -21,13 +22,13 @@ class ProviderRegistry:
     """Registry and factory for LLM providers."""
 
     def __init__(self) -> None:
-        self._factories: Dict[str, ProviderFactory] = {}
+        self._factories: dict[str, ProviderFactory] = {}
 
     def register(self, name: str, factory: ProviderFactory) -> None:
         """Register a factory for a given provider name."""
         self._factories[name.lower()] = factory
 
-    def create(self, provider_name: str, config: "AgentConfig") -> LLMProvider:
+    def create(self, provider_name: str, config: AgentConfig) -> LLMProvider:
         """Instantiate the LLM provider using the registered factory."""
         key = provider_name.lower()
         factory = self._factories.get(key)
@@ -43,7 +44,7 @@ class ProviderRegistry:
         """Check if a provider name is registered."""
         return name.lower() in self._factories
 
-    def list_providers(self) -> List[str]:
+    def list_providers(self) -> list[str]:
         """List all registered provider names."""
         return sorted(self._factories.keys())
 
@@ -53,7 +54,7 @@ default_provider_registry = ProviderRegistry()
 
 
 # Default factories
-def _create_anthropic_provider(config: "AgentConfig") -> LLMProvider:
+def _create_anthropic_provider(config: AgentConfig) -> LLMProvider:
     from terminal_agent.llm.anthropic import AnthropicProvider
     return AnthropicProvider(
         model=config.model_name,
@@ -62,7 +63,7 @@ def _create_anthropic_provider(config: "AgentConfig") -> LLMProvider:
     )
 
 
-def _create_openai_compatible_provider(config: "AgentConfig") -> LLMProvider:
+def _create_openai_compatible_provider(config: AgentConfig) -> LLMProvider:
     from terminal_agent.llm.openai_compatible import OpenAICompatibleProvider
     return OpenAICompatibleProvider(
         model=config.model_name,

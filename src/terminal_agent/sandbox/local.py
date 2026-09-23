@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-import os
-from pathlib import Path
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 from terminal_agent.sandbox.base import SandboxBackend, SandboxPolicy, SandboxResult
 from terminal_agent.tools.base import resolve_safe_path
@@ -104,7 +103,7 @@ class LocalRestrictedSandbox(SandboxBackend):
                     process.communicate(), timeout=effective_timeout
                 )
                 timed_out = False
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 await _kill_process_tree(process)
                 duration = time.perf_counter() - start_time
                 return SandboxResult(
@@ -148,7 +147,7 @@ class LocalRestrictedSandbox(SandboxBackend):
             duration = time.perf_counter() - start_time
             return SandboxResult(
                 stdout="",
-                stderr=f"Execution error: {str(e)}",
+                stderr=f"Execution error: {e!s}",
                 returncode=1,
                 duration_seconds=round(duration, 2),
                 timed_out=False,

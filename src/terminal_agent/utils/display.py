@@ -1,6 +1,6 @@
 from rich.console import Console
-from rich.panel import Panel
 from rich.markdown import Markdown
+from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.text import Text
 
@@ -41,8 +41,31 @@ def display_approval_prompt(reason: str) -> bool:
     console.print(f"\n[bold yellow]⚠ Approval required:[/bold yellow] {reason}")
     return Confirm.ask("Allow this action?", default=False)
 
-def display_status_bar(model: str, tokens_used: int, max_tokens: int):
-    """Show status info."""
+def display_status_bar(
+    model: str,
+    tokens_used: int,
+    max_tokens: int,
+    cumulative_tokens: int | None = None,
+    session_cost: float | None = None,
+) -> None:
+    """Show status info separating active context from cumulative session traffic.
+
+    Args:
+        model: Active model identifier.
+        tokens_used: Active context tokens in current conversation window.
+        max_tokens: Maximum allowed context window for the model.
+        cumulative_tokens: Optional cumulative billed tokens across all turns in this session.
+        session_cost: Optional total dollar cost for this session.
+    """
     pct = (tokens_used / max_tokens) * 100 if max_tokens else 0
-    status = f"Model: {model} | Context: {tokens_used}/{max_tokens} ({pct:.1f}%)"
+    parts = [
+        f"Model: {model}",
+        f"Context Window: {tokens_used:,}/{max_tokens:,} ({pct:.1f}%)",
+    ]
+    if cumulative_tokens is not None and cumulative_tokens > 0:
+        parts.append(f"Session Traffic: {cumulative_tokens:,} tokens")
+    if session_cost is not None and session_cost > 0:
+        parts.append(f"Cost: ${session_cost:.4f}")
+
+    status = " | ".join(parts)
     console.print(f"[dim]{status}[/dim]")

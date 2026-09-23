@@ -3,19 +3,18 @@
 from __future__ import annotations
 
 import pytest
-from terminal_agent.core.config import AgentConfig
+
 from terminal_agent.core.agent import Agent
+from terminal_agent.core.config import AgentConfig
+from terminal_agent.llm.anthropic import AnthropicProvider
+from terminal_agent.llm.openai_compatible import OpenAICompatibleProvider
 from terminal_agent.llm.profiles import (
-    ModelProfile,
-    ProfileRegistry,
     DEFAULT_PROFILES,
-    register_profile,
     get_profile,
     list_profiles,
+    register_profile,
     remove_profile,
 )
-from terminal_agent.llm.openai_compatible import OpenAICompatibleProvider
-from terminal_agent.llm.anthropic import AnthropicProvider
 
 
 def test_default_profiles_exist():

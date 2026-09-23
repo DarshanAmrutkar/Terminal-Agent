@@ -3,19 +3,20 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
+
+from terminal_agent.repo.map_builder import RepoMapBuilder
+from terminal_agent.tools.base import resolve_safe_path
 
 from .base import Tool, ToolResult
 from .registry import register_tool
-from terminal_agent.repo.map_builder import RepoMapBuilder
-from terminal_agent.tools.base import resolve_safe_path
 
 
 @register_tool
 class RepoMapTool(Tool):
     """Tool that returns a structural symbol map of code in the repository."""
 
-    def __init__(self, working_dir: Optional[str] = None):
+    def __init__(self, working_dir: str | None = None):
         self.working_dir = Path(working_dir).resolve() if working_dir else Path.cwd()
 
     @property
@@ -30,7 +31,7 @@ class RepoMapTool(Tool):
         )
 
     @property
-    def parameters(self) -> Dict[str, Any]:
+    def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -55,8 +56,8 @@ class RepoMapTool(Tool):
 
     async def execute(
         self,
-        directory: Optional[str] = None,
-        keywords: Optional[str] = None,
+        directory: str | None = None,
+        keywords: str | None = None,
         max_tokens: int = 1500,
         **kwargs,
     ) -> ToolResult:
@@ -84,6 +85,6 @@ class RepoMapTool(Tool):
 
         except Exception as e:
             return ToolResult(
-                output=f"Failed to generate repository map: {str(e)}",
+                output=f"Failed to generate repository map: {e!s}",
                 is_error=True,
             )

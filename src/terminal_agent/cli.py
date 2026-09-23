@@ -7,12 +7,10 @@ streaming responses, command history, and slash commands.
 from __future__ import annotations
 
 import asyncio
-import sys
 
 from prompt_toolkit import PromptSession
-from prompt_toolkit.history import FileHistory
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
-from rich.console import Console
+from prompt_toolkit.history import FileHistory
 from rich.panel import Panel
 from rich.text import Text
 
@@ -22,10 +20,9 @@ from terminal_agent.core.session_store import SessionStore
 from terminal_agent.llm.profiles import list_profiles
 from terminal_agent.utils.display import (
     console,
-    display_welcome,
     display_status_bar,
+    display_welcome,
 )
-from terminal_agent.utils.cost import CostTracker
 
 
 def _get_history_path() -> str:
@@ -125,10 +122,17 @@ async def run_interactive(
             console.print()
 
             # Show status after each turn
+            active_context = (
+                agent.session.current_context_tokens
+                if agent.session.current_context_tokens > 0
+                else agent.session.estimate_active_tokens()
+            )
             display_status_bar(
-                config.model_name,
-                agent.session.total_input_tokens + agent.session.total_output_tokens,
-                config.max_context_tokens,
+                model=config.model_name,
+                tokens_used=active_context,
+                max_tokens=config.max_context_tokens,
+                cumulative_tokens=agent.session.total_input_tokens + agent.session.total_output_tokens,
+                session_cost=agent.cost_tracker.get_session_cost(),
             )
             console.print()
 

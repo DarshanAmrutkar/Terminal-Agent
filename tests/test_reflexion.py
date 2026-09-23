@@ -1,8 +1,9 @@
 import pytest
-from terminal_agent.core.reflexion import ReflexionMemory, FailureEpisode
-from terminal_agent.llm.message import ToolCall
-from terminal_agent.core.config import AgentConfig
+
 from terminal_agent.core.agent import Agent
+from terminal_agent.core.config import AgentConfig
+from terminal_agent.core.reflexion import ReflexionMemory
+from terminal_agent.llm.message import ToolCall
 
 
 def test_reflexion_record_failure_and_heuristics():
@@ -118,8 +119,8 @@ def test_reflexion_mark_resolved_and_context_block():
 
 @pytest.mark.asyncio
 async def test_agent_integration_with_reflexion():
-    import tempfile
     import os
+    import tempfile
     with tempfile.TemporaryDirectory() as temp_dir:
         orig_cwd = os.getcwd()
         os.chdir(temp_dir)

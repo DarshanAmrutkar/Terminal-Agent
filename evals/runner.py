@@ -4,24 +4,24 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from datetime import datetime
 import difflib
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import time
-from typing import Sequence
+from collections.abc import Sequence
+from datetime import datetime
+from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
 from evals.judge import CodeJudge
-from evals.models import EvalReport, EvalResult, EvalTask, TaskCategory
 from evals.mock_provider import MockEvalProvider
-from evals.tasks.fixtures import BENCHMARK_TASKS, get_all_tasks, get_task
+from evals.models import EvalReport, EvalResult, EvalTask, TaskCategory
+from evals.tasks.fixtures import get_all_tasks
 from evals.trajectory import TrajectoryAnalyzer
 from terminal_agent.core.agent import Agent
 from terminal_agent.core.config import AgentConfig
@@ -312,7 +312,7 @@ class EvalRunner:
         report.save_json(json_path)
         report.save_markdown(md_path)
 
-        console.print(f"\n[bold green][*][/bold green] Saved benchmark report to:")
+        console.print("\n[bold green][*][/bold green] Saved benchmark report to:")
         console.print(f"  - JSON: [dim]{json_path}[/dim]")
         console.print(f"  - Markdown: [dim]{md_path}[/dim]\n")
 

@@ -1,7 +1,7 @@
 """Tests for session persistence and SessionStore."""
 
 import tempfile
-from pathlib import Path
+
 import pytest
 
 from terminal_agent.core.session import Session
@@ -117,8 +117,8 @@ async def test_agent_session_resumption():
         store.save_session(prior_session)
 
         # Resuming agent with prior session
-        from terminal_agent.core.config import AgentConfig
         from terminal_agent.core.agent import Agent
+        from terminal_agent.core.config import AgentConfig
         from terminal_agent.utils.approval import AutoApprovalHandler
 
         config = AgentConfig(provider="anthropic", anthropic_api_key="sk-test")

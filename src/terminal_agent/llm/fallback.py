@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import AsyncGenerator, Sequence
 from enum import Enum
-from typing import Any, AsyncGenerator, Sequence
+from typing import Any
 
 from terminal_agent.llm.base import LLMProvider
-from terminal_agent.llm.message import Message, StreamEvent, LLMResponse
+from terminal_agent.llm.message import LLMResponse, Message, StreamEvent
 
 logger = logging.getLogger(__name__)
 

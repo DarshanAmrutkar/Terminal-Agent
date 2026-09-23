@@ -1,7 +1,7 @@
 import asyncio
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .base import Tool, ToolResult, resolve_safe_path
 from .registry import register_tool
@@ -20,7 +20,7 @@ class GrepSearchTool(Tool):
         return "Search for patterns in files using ripgrep (rg)."
 
     @property
-    def parameters(self) -> Dict[str, Any]:
+    def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -53,7 +53,7 @@ class GrepSearchTool(Tool):
         self,
         pattern: str,
         path: str = ".",
-        includes: Optional[List[str]] = None,
+        includes: list[str] | None = None,
         case_insensitive: bool = False,
     ) -> ToolResult:
         search_path, err = resolve_safe_path(path)
@@ -72,8 +72,9 @@ import fnmatch
 import os
 import re
 
+
 def _python_grep(
-    pattern: str, path: Path, includes: Optional[List[str]], case_insensitive: bool
+    pattern: str, path: Path, includes: list[str] | None, case_insensitive: bool
 ) -> ToolResult:
     flags = re.IGNORECASE if case_insensitive else 0
     try:
@@ -123,7 +124,7 @@ def _python_grep(
 
 
 def _run_ripgrep_with_fallback(
-    pattern: str, path: Path, includes: Optional[List[str]], case_insensitive: bool
+    pattern: str, path: Path, includes: list[str] | None, case_insensitive: bool
 ) -> ToolResult:
     cmd = ["rg", "--line-number", "--color", "never", "--max-count", "50"]
 
@@ -160,4 +161,4 @@ def _run_ripgrep_with_fallback(
         # Fall back to pure-Python grep when 'rg' is not installed
         return _python_grep(pattern, path, includes, case_insensitive)
     except Exception as e:
-        return ToolResult(output=f"Error executing ripgrep: {str(e)}", is_error=True)
+        return ToolResult(output=f"Error executing ripgrep: {e!s}", is_error=True)

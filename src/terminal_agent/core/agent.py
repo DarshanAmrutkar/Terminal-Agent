@@ -13,51 +13,42 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import AsyncGenerator
-
 
 from terminal_agent.core.config import AgentConfig
-from terminal_agent.llm.profiles import ModelProfile, profile_registry
-from terminal_agent.core.session import Session
-from terminal_agent.core.session_store import SessionStore
-from terminal_agent.llm.base import LLMProvider
-from terminal_agent.llm.anthropic import AnthropicProvider
-from terminal_agent.llm.openai_compatible import OpenAICompatibleProvider
-from terminal_agent.llm.message import (
-    Message,
-    ToolCall,
-    ToolResultContent,
-    StreamEvent,
-    LLMResponse,
-)
-from terminal_agent.tools.registry import ToolRegistry, discover_builtin_tools
-from terminal_agent.tools.base import ToolResult
-from terminal_agent.utils.cost import CostTracker
-from terminal_agent.utils.display import (
-    console,
-    display_tool_call,
-    display_tool_result,
-    display_streaming_token,
-    display_approval_prompt,
-    display_agent_message,
-)
-from terminal_agent.utils.permissions import PermissionChecker, PermissionOutcome
-from terminal_agent.core.reflexion import ReflexionMemory
-from terminal_agent.llm.registry import default_provider_registry, ProviderRegistry
 from terminal_agent.core.events import (
     AgentEvent,
     AgentEventListener,
     RichConsoleListener,
-    TurnStartEvent,
-    TurnEndEvent,
     TextDeltaEvent,
-    ToolCallStartEvent,
     ToolCallEndEvent,
+    ToolCallStartEvent,
+    TurnEndEvent,
+    TurnStartEvent,
 )
+from terminal_agent.core.reflexion import ReflexionMemory
+from terminal_agent.core.session import Session
+from terminal_agent.core.session_store import SessionStore
+from terminal_agent.guardrails.domain import DomainGuardrail
+from terminal_agent.llm.base import LLMProvider
+from terminal_agent.llm.message import (
+    LLMResponse,
+    Message,
+    ToolCall,
+    ToolResultContent,
+)
+from terminal_agent.llm.profiles import ModelProfile, profile_registry
+from terminal_agent.llm.registry import ProviderRegistry, default_provider_registry
+from terminal_agent.tools.base import ToolResult
+from terminal_agent.tools.registry import ToolRegistry
 from terminal_agent.utils.approval import (
     ApprovalHandler,
     CLIApprovalHandler,
 )
+from terminal_agent.utils.cost import CostTracker
+from terminal_agent.utils.display import (
+    console,
+)
+from terminal_agent.utils.permissions import PermissionChecker, PermissionOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +122,9 @@ class Agent:
         
         # Initialize Reflexion episodic failure memory buffer
         self.reflexion_memory = ReflexionMemory(max_episodes=5)
+        
+        # Initialize domain boundary guardrail
+        self.domain_guardrail = DomainGuardrail()
         
         # Token tracking for real-time status bar updates
         self._last_input_tokens = 0
@@ -242,13 +236,13 @@ class Agent:
         variant (e.g., a read-only agent) could skip importing write_file or
         run_command and get a narrower tool set without any other changes.
         """
-        import terminal_agent.tools.read_file      # noqa: F401
-        import terminal_agent.tools.write_file     # noqa: F401
-        import terminal_agent.tools.search_replace # noqa: F401
-        import terminal_agent.tools.grep_search    # noqa: F401
-        import terminal_agent.tools.list_directory # noqa: F401
-        import terminal_agent.tools.run_command    # noqa: F401
-        import terminal_agent.tools.repo_map       # noqa: F401
+        import terminal_agent.tools.grep_search
+        import terminal_agent.tools.list_directory
+        import terminal_agent.tools.read_file
+        import terminal_agent.tools.repo_map
+        import terminal_agent.tools.run_command
+        import terminal_agent.tools.search_replace
+        import terminal_agent.tools.write_file  # noqa: F401
 
     def _load_system_prompt(self) -> str:
         """Load the system prompt template and fill in placeholders."""
@@ -287,8 +281,8 @@ class Agent:
         Tier 1: Agentless Fast Path (Localize -> Patch -> Validate) for focused bug-fixing.
         Tier 2: Autonomous ReAct loop with full tool access and Reflexion episodic memory.
         """
-        from terminal_agent.core.fast_path import AgentlessFastPath
         from terminal_agent.core.config import ExecutionMode
+        from terminal_agent.core.fast_path import AgentlessFastPath
 
         if self.config.execution_mode in (ExecutionMode.FAST_PATH, ExecutionMode.AUTO):
             fast_path = AgentlessFastPath(
@@ -328,12 +322,38 @@ class Agent:
         3. Streams LLM responses and executes tool calls
         4. Continues until the LLM emits a final text response
         """
-        # Add user message
+        # 1. Add user message to session
         self.session.add_user_message(user_input)
         self.session.reset_iteration_count()
-        
+
         try:
-            # Enter the agent loop
+            # 2. Check domain boundary guardrails if enabled
+            if getattr(self.config, "enable_domain_guardrail", True):
+                is_in_domain, refusal_msg = await self.domain_guardrail.check(user_input, provider=self.provider)
+                if not is_in_domain and refusal_msg:
+                    self.emit(TurnStartEvent(iteration=1))
+                    self.emit(TextDeltaEvent(text=refusal_msg))
+                    refusal_assistant_msg = Message.assistant(content=refusal_msg)
+                    self.session.add_assistant_message(refusal_assistant_msg)
+                    self.emit(
+                        TurnEndEvent(
+                            iteration=1,
+                            response=LLMResponse(
+                                message=refusal_assistant_msg,
+                                input_tokens=0,
+                                output_tokens=0,
+                                stop_reason="end_turn",
+                            ),
+                        )
+                    )
+                    if self.session_store:
+                        try:
+                            self.session_store.save_session(self.session)
+                        except Exception as e:
+                            logger.warning(f"Failed to auto-save session: {e}")
+                    return
+
+            # 3. Enter the agent loop
             await self._agent_loop()
         except (KeyboardInterrupt, asyncio.CancelledError):
             logger.warning("Turn interrupted by user (Ctrl+C). Terminating running sandbox operations.")
@@ -622,7 +642,7 @@ class Agent:
         except Exception as e:
             logger.error(f"Tool execution error: {e}", exc_info=True)
             result = ToolResult(
-                output=f"Error executing {tool_call.name}: {str(e)}",
+                output=f"Error executing {tool_call.name}: {e!s}",
                 is_error=True,
             )
 

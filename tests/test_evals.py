@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from evals.models import EvalReport, EvalResult, EvalTask, TaskCategory, TaskDifficulty
 from evals.mock_provider import MockEvalProvider
+from evals.models import EvalReport, EvalResult
 from evals.runner import EvalRunner
-from evals.tasks.fixtures import BENCHMARK_TASKS, get_all_tasks, get_task
+from evals.tasks.fixtures import get_all_tasks, get_task
 from terminal_agent.llm.message import Message
 
 

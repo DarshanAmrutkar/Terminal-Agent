@@ -2,21 +2,19 @@
 
 from __future__ import annotations
 
-import asyncio
-from pathlib import Path
-import pytest
 import tempfile
+from pathlib import Path
 
-from terminal_agent.utils.permissions import classify_command, SafetyLevel
-from terminal_agent.tools.base import resolve_safe_path
-from terminal_agent.tools.write_file import WriteFileTool
-from terminal_agent.tools.read_file import ReadFileTool
-from terminal_agent.tools.search_replace import SearchReplaceTool
-from terminal_agent.tools.list_directory import ListDirectoryTool
-from terminal_agent.utils.cost import CostTracker
+import pytest
+
 from terminal_agent.core.session import Session
 from terminal_agent.llm.message import Message, ToolResultContent
-
+from terminal_agent.tools.base import resolve_safe_path
+from terminal_agent.tools.read_file import ReadFileTool
+from terminal_agent.tools.search_replace import SearchReplaceTool
+from terminal_agent.tools.write_file import WriteFileTool
+from terminal_agent.utils.cost import CostTracker
+from terminal_agent.utils.permissions import SafetyLevel, classify_command
 
 SAFE_COMMANDS = ["ls", "dir", "cat", "echo", "pwd", "git status"]
 BLOCKED_PATTERNS = ["rm -rf /", "mkfs"]

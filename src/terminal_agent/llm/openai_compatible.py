@@ -38,12 +38,13 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import AsyncGenerator, Any
+from collections.abc import AsyncGenerator
+from typing import Any
 
-from openai import AsyncOpenAI, APIError, APIConnectionError, RateLimitError
+from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
 
 from .base import LLMProvider
-from .message import Message, Role, ToolCall, ToolResultContent, StreamEvent, LLMResponse
+from .message import LLMResponse, Message, Role, StreamEvent, ToolCall
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +220,7 @@ class OpenAICompatibleProvider(LLMProvider):
         if formatted_tools:
             kwargs["tools"] = formatted_tools
             kwargs["tool_choice"] = "auto"
+            kwargs["parallel_tool_calls"] = True
 
         retries = 0
         while True:
@@ -299,6 +301,7 @@ class OpenAICompatibleProvider(LLMProvider):
         if formatted_tools:
             kwargs["tools"] = formatted_tools
             kwargs["tool_choice"] = "auto"
+            kwargs["parallel_tool_calls"] = True
 
         # Accumulate tool call arguments across chunks.
         # OpenAI sends partial JSON in multiple deltas keyed by index.

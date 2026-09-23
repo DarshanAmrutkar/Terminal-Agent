@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
-import pytest
 import sys
 import tempfile
+from pathlib import Path
+
+import pytest
 
 from terminal_agent.sandbox import (
-    DEFAULT_ALLOWED_ENV_VARS,
-    DEFAULT_BLOCKED_ENV_PATTERNS,
     DisabledSandbox,
     DockerSandbox,
     LocalRestrictedSandbox,

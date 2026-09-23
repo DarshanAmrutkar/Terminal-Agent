@@ -1,7 +1,6 @@
 import asyncio
-import os
 from pathlib import Path
-from typing import Any, Dict, Set
+from typing import Any
 
 from .base import Tool, ToolResult, resolve_safe_path
 from .registry import register_tool
@@ -24,7 +23,7 @@ def _list_directory_sync(target_path: Path, path_str: str, recursive: bool, max_
 
     ignored_dirs = {".git", "node_modules", "__pycache__", ".venv", "venv", ".idea", ".vscode"}
     output_lines = []
-    visited: Set[Path] = set()
+    visited: set[Path] = set()
     max_entries = 500
     truncated = False
 
@@ -88,7 +87,7 @@ class ListDirectoryTool(Tool):
         return "List files and directories in a given path."
 
     @property
-    def parameters(self) -> Dict[str, Any]:
+    def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -126,5 +125,5 @@ class ListDirectoryTool(Tool):
         try:
             return await asyncio.to_thread(_list_directory_sync, target_path, path, recursive, max_depth)
         except Exception as e:
-            return ToolResult(output=f"Error listing directory '{path}': {str(e)}", is_error=True)
+            return ToolResult(output=f"Error listing directory '{path}': {e!s}", is_error=True)
 

@@ -7,8 +7,8 @@ or webhook-based remote confirmations.
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 import asyncio
+from abc import ABC, abstractmethod
 
 
 class ApprovalHandler(ABC):
@@ -17,7 +17,6 @@ class ApprovalHandler(ABC):
     @abstractmethod
     async def request_approval(self, reason: str) -> bool:
         """Request permission to execute an action."""
-        pass
 
 
 class CLIApprovalHandler(ApprovalHandler):

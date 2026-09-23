@@ -1,8 +1,11 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod
-from typing import AsyncGenerator, Any
 
-from .message import Message, StreamEvent, LLMResponse
+from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator
+from typing import Any
+
+from .message import LLMResponse, Message, StreamEvent
+
 
 class LLMProvider(ABC):
     def __init__(self, model: str, api_key: str, max_tokens: int = 8192):

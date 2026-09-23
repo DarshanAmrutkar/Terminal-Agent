@@ -1,14 +1,16 @@
 from __future__ import annotations
+
 import asyncio
 import json
 import logging
-from typing import AsyncGenerator, Any
+from collections.abc import AsyncGenerator
+from typing import Any
 
 import tiktoken
-from anthropic import AsyncAnthropic, APIError, APIConnectionError, RateLimitError
+from anthropic import APIConnectionError, APIError, AsyncAnthropic, RateLimitError
 
-from .message import Message, Role, ToolCall, ToolResultContent, StreamEvent, LLMResponse
 from .base import LLMProvider
+from .message import LLMResponse, Message, Role, StreamEvent, ToolCall
 
 logger = logging.getLogger(__name__)
 

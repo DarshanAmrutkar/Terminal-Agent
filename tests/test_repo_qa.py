@@ -4,9 +4,8 @@ import pytest
 
 from evals.judge import CodeJudge
 from evals.models import TaskCategory
-from evals.tasks.fixtures import get_task, get_all_tasks
 from evals.runner import EvalRunner
-
+from evals.tasks.fixtures import get_all_tasks, get_task
 
 USER_AGENT_SANDBOX_RESPONSE = """
 # Terminal Agent — High-Level Architecture Overview

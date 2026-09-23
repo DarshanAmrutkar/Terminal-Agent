@@ -1,14 +1,15 @@
 import json
 import os
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
 import pytest
 
-from terminal_agent.core.fast_path import AgentlessFastPath, FastPathResult
-from terminal_agent.core.config import AgentConfig, ExecutionMode
 from terminal_agent.core.agent import Agent
+from terminal_agent.core.config import AgentConfig, ExecutionMode
+from terminal_agent.core.fast_path import AgentlessFastPath
 from terminal_agent.llm.base import LLMProvider
-from terminal_agent.llm.message import Message, LLMResponse
+from terminal_agent.llm.message import LLMResponse, Message
 
 
 class MockFastPathProvider(LLMProvider):

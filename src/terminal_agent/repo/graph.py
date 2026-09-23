@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
-from terminal_agent.repo.ast_parser import FileSymbols, SymbolInfo
+from terminal_agent.repo.ast_parser import FileSymbols
 
 
 class SymbolDependencyGraph:

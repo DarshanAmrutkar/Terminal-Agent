@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
-import json
 from pathlib import Path
 from typing import Any
 
@@ -39,8 +39,8 @@ class EvalTask:
     max_iterations: int = 15
 
 
-from evals.trajectory import TrajectoryMetrics
 from evals.judge import JudgeScore
+from evals.trajectory import TrajectoryMetrics
 
 
 @dataclass
@@ -155,8 +155,8 @@ class EvalReport:
 
     def to_markdown(self) -> str:
         lines = [
-            f"# Terminal Agent Evaluation Benchmark Report",
-            f"",
+            "# Terminal Agent Evaluation Benchmark Report",
+            "",
             f"- **Timestamp:** `{self.timestamp}`",
             f"- **Provider / Model:** `{self.provider}` / `{self.model_name}`",
             f"- **Overall Pass Rate:** **{self.pass_rate_pct}%** ({self.passed_tasks}/{self.total_tasks} passed)",
@@ -178,11 +178,11 @@ class EvalReport:
             f"- **Total Duration:** {self.total_duration_seconds}s",
             f"- **Total Tokens:** {self.total_input_tokens + self.total_output_tokens:,} (Input: {self.total_input_tokens:,}, Output: {self.total_output_tokens:,})",
             f"- **Total Estimated Cost:** ${self.total_cost:.4f}",
-            f"",
-            f"## Task Results Breakdown",
-            f"",
-            f"| Task ID | Task Name | Category | Status | Iter | Tools | Quality | Faith | Cost ($) |",
-            f"|:---|:---|:---|:---:|:---:|:---:|:---:|:---:|:---:|",
+            "",
+            "## Task Results Breakdown",
+            "",
+            "| Task ID | Task Name | Category | Status | Iter | Tools | Quality | Faith | Cost ($) |",
+            "|:---|:---|:---|:---:|:---:|:---:|:---:|:---:|:---:|",
         ])
 
         for r in self.results:

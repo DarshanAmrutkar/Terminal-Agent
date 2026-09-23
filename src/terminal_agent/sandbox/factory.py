@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import os
-from pathlib import Path
 import time
-from typing import Optional
+from pathlib import Path
 
 from terminal_agent.sandbox.base import SandboxBackend, SandboxPolicy, SandboxResult
 from terminal_agent.sandbox.docker import DockerSandbox
@@ -47,7 +45,7 @@ class DisabledSandbox(SandboxBackend):
                     process.communicate(), timeout=effective_timeout
                 )
                 timed_out = False
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 await _kill_process_tree(process)
                 duration = time.perf_counter() - start_time
                 return SandboxResult(
@@ -82,7 +80,7 @@ class DisabledSandbox(SandboxBackend):
 def create_sandbox(
     mode: str = "local",
     working_dir: Path | str = ".",
-    policy: Optional[SandboxPolicy] = None,
+    policy: SandboxPolicy | None = None,
     docker_image: str = "python:3.12-slim",
 ) -> SandboxBackend:
     """Instantiate and return the appropriate sandbox backend based on configuration."""

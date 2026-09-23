@@ -1,18 +1,18 @@
 from pathlib import Path
-from typing import Any, Dict, Optional
-import os
+from typing import Any
+
+from terminal_agent.sandbox.base import SandboxBackend, SandboxPolicy, SandboxResult
+from terminal_agent.sandbox.local import LocalRestrictedSandbox
 
 from .base import Tool, ToolResult
 from .registry import register_tool
-from terminal_agent.sandbox.base import SandboxBackend, SandboxPolicy, SandboxResult
-from terminal_agent.sandbox.local import LocalRestrictedSandbox, _kill_process_tree
 
 
 @register_tool
 class RunCommandTool(Tool):
     """Tool for executing shell commands inside a secured execution sandbox."""
 
-    def __init__(self, sandbox: Optional[SandboxBackend] = None, working_dir: Optional[str] = None):
+    def __init__(self, sandbox: SandboxBackend | None = None, working_dir: str | None = None):
         self.sandbox = sandbox
         self.working_dir = Path(working_dir).resolve() if working_dir else Path.cwd()
 
@@ -25,7 +25,7 @@ class RunCommandTool(Tool):
         return "Execute a shell command in the system."
 
     @property
-    def parameters(self) -> Dict[str, Any]:
+    def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -52,7 +52,7 @@ class RunCommandTool(Tool):
     async def execute(
         self, 
         command: str, 
-        cwd: Optional[str] = None, 
+        cwd: str | None = None, 
         timeout: int = 120, 
         **kwargs
     ) -> ToolResult:
@@ -85,6 +85,6 @@ class RunCommandTool(Tool):
 
         except Exception as e:
             return ToolResult(
-                output=f"Failed to execute command: {str(e)}", 
+                output=f"Failed to execute command: {e!s}", 
                 is_error=True
             )

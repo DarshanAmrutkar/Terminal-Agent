@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
-from typing import Any, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
 
 from terminal_agent.llm.base import LLMProvider
 from terminal_agent.llm.message import (

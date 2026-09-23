@@ -1,7 +1,9 @@
 from __future__ import annotations
-from dataclasses import dataclass, field
+
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
+
 
 class Role(str, Enum):
     SYSTEM = 'system'
@@ -29,19 +31,19 @@ class Message:
     tool_results: list[ToolResultContent] | None = None  # for tool result messages
     
     @classmethod
-    def system(cls, content: str) -> 'Message':
+    def system(cls, content: str) -> Message:
         return cls(role=Role.SYSTEM, content=content)
     
     @classmethod  
-    def user(cls, content: str) -> 'Message':
+    def user(cls, content: str) -> Message:
         return cls(role=Role.USER, content=content)
     
     @classmethod
-    def assistant(cls, content: str | None = None, tool_calls: list[ToolCall] | None = None) -> 'Message':
+    def assistant(cls, content: str | None = None, tool_calls: list[ToolCall] | None = None) -> Message:
         return cls(role=Role.ASSISTANT, content=content, tool_calls=tool_calls)
     
     @classmethod
-    def tool_result(cls, results: list[ToolResultContent]) -> 'Message':
+    def tool_result(cls, results: list[ToolResultContent]) -> Message:
         return cls(role=Role.TOOL_RESULT, tool_results=results)
 
 @dataclass

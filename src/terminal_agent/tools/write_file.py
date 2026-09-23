@@ -1,12 +1,11 @@
 import asyncio
-import os
-from pathlib import Path
-from typing import Any, Dict
 import uuid
+from pathlib import Path
+from typing import Any
 
+from ..utils.syntax_gate import SyntaxGate
 from .base import Tool, ToolResult, resolve_safe_path
 from .registry import register_tool
-from ..utils.syntax_gate import SyntaxGate
 
 
 def _write_file_sync(file_path: Path, content: str, create_dirs: bool) -> tuple[int, bool]:
@@ -41,7 +40,7 @@ class WriteFileTool(Tool):
         return "Create a new file or overwrite an existing file with the provided content."
 
     @property
-    def parameters(self) -> Dict[str, Any]:
+    def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -110,7 +109,7 @@ class WriteFileTool(Tool):
             )
         except Exception as e:
             return ToolResult(
-                output=f"An unexpected error occurred while writing to '{path}': {str(e)}", 
+                output=f"An unexpected error occurred while writing to '{path}': {e!s}", 
                 is_error=True
             )
 

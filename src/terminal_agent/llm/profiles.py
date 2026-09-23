@@ -6,7 +6,6 @@ with simple functions to register, list, look up, and remove models.
 
 from __future__ import annotations
 
-from typing import Optional
 from pydantic import BaseModel, Field
 
 
@@ -15,11 +14,11 @@ class ModelProfile(BaseModel):
     name: str = Field(description="Short alias for the profile (e.g. 'sonnet', 'nemotron', 'deepseek')")
     provider: str = Field(description="LLM provider: 'anthropic', 'nvidia', 'openai', 'openrouter'")
     model_name: str = Field(description="Full model identifier passed to the API")
-    base_url: Optional[str] = Field(default=None, description="Optional API base URL override")
+    base_url: str | None = Field(default=None, description="Optional API base URL override")
     max_tokens: int = Field(default=8192, description="Max output tokens per response")
     context_window: int = Field(default=100000, description="Context window capacity in tokens")
     temperature: float = Field(default=0.0, description="Sampling temperature")
-    description: Optional[str] = Field(default=None, description="Human-friendly description")
+    description: str | None = Field(default=None, description="Human-friendly description")
 
 
 # Default built-in presets
@@ -157,14 +156,14 @@ profile_registry = ProfileRegistry(populate_defaults=True)
 
 def register_profile(
     name_or_profile: str | ModelProfile | None = None,
-    name: Optional[str] = None,
-    provider: Optional[str] = None,
-    model_name: Optional[str] = None,
-    base_url: Optional[str] = None,
+    name: str | None = None,
+    provider: str | None = None,
+    model_name: str | None = None,
+    base_url: str | None = None,
     max_tokens: int = 8192,
     context_window: int = 100000,
     temperature: float = 0.0,
-    description: Optional[str] = None,
+    description: str | None = None,
 ) -> ModelProfile:
     """Easily register a new model profile.
     

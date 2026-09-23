@@ -10,7 +10,7 @@ from __future__ import annotations
 from abc import ABC
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from terminal_agent.llm.message import LLMResponse
 
@@ -31,7 +31,7 @@ class TurnStartEvent(AgentEvent):
 class TurnEndEvent(AgentEvent):
     """Emitted when a ReAct iteration concludes."""
     iteration: int = 1
-    response: Optional[LLMResponse] = None
+    response: LLMResponse | None = None
 
 
 @dataclass
@@ -44,7 +44,7 @@ class TextDeltaEvent(AgentEvent):
 class ToolCallStartEvent(AgentEvent):
     """Emitted when the agent decides to invoke a tool."""
     tool_name: str = ""
-    arguments: Dict[str, Any] = field(default_factory=dict)
+    arguments: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -60,23 +60,18 @@ class AgentEventListener(ABC):
 
     def on_turn_start(self, event: TurnStartEvent) -> None:
         """Called when an iteration turn begins."""
-        pass
 
     def on_turn_end(self, event: TurnEndEvent) -> None:
         """Called when an iteration turn ends."""
-        pass
 
     def on_text_delta(self, event: TextDeltaEvent) -> None:
         """Called on each streamed token."""
-        pass
 
     def on_tool_call_start(self, event: ToolCallStartEvent) -> None:
         """Called when a tool execution starts."""
-        pass
 
     def on_tool_call_end(self, event: ToolCallEndEvent) -> None:
         """Called when a tool execution completes."""
-        pass
 
 
 class RichConsoleListener(AgentEventListener):

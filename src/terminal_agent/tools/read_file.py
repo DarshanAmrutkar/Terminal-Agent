@@ -1,13 +1,12 @@
 import asyncio
-import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .base import Tool, ToolResult, resolve_safe_path
 from .registry import register_tool
 
 
-def _read_file_sync(file_path: Path, start_line: Optional[int], end_line: Optional[int]) -> ToolResult:
+def _read_file_sync(file_path: Path, start_line: int | None, end_line: int | None) -> ToolResult:
     if not file_path.exists():
         return ToolResult(
             output=f"Error: File not found at '{file_path}'", 
@@ -78,7 +77,7 @@ class ReadFileTool(Tool):
         return "Read the contents of a file, optionally restricted to a line range."
 
     @property
-    def parameters(self) -> Dict[str, Any]:
+    def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -105,8 +104,8 @@ class ReadFileTool(Tool):
     async def execute(
         self, 
         path: str, 
-        start_line: Optional[int] = None, 
-        end_line: Optional[int] = None, 
+        start_line: int | None = None, 
+        end_line: int | None = None, 
         **kwargs
     ) -> ToolResult:
         file_path, err = resolve_safe_path(path)
@@ -117,7 +116,7 @@ class ReadFileTool(Tool):
             return await asyncio.to_thread(_read_file_sync, file_path, start_line, end_line)
         except Exception as e:
             return ToolResult(
-                output=f"An unexpected error occurred while reading '{path}': {str(e)}", 
+                output=f"An unexpected error occurred while reading '{path}': {e!s}", 
                 is_error=True
             )
 

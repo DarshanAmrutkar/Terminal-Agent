@@ -8,11 +8,9 @@ with exactly the tools it needs.
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 
-from terminal_agent.tools.registry import ToolRegistry, register_tool, _TOOL_CLASSES
 from terminal_agent.tools.base import Tool, ToolResult
-
+from terminal_agent.tools.registry import ToolRegistry
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -129,9 +127,9 @@ class TestLoadDefaults:
     def test_load_defaults_loads_real_tools(self):
         """load_defaults() should populate the registry with all @register_tool classes."""
         # Import tool modules to trigger @register_tool
-        import terminal_agent.tools.read_file      # noqa: F401
-        import terminal_agent.tools.write_file     # noqa: F401
-        import terminal_agent.tools.run_command    # noqa: F401
+        import terminal_agent.tools.read_file
+        import terminal_agent.tools.run_command
+        import terminal_agent.tools.write_file  # noqa: F401
 
         registry = ToolRegistry()
         registry.load_defaults()

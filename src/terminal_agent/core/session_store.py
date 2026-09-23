@@ -62,7 +62,7 @@ class SessionStore:
         """Retrieve the most recently updated session, or None if no sessions exist."""
         files = sorted(
             self.storage_dir.glob("*.json"),
-            key=lambda p: p.stat().st_mtime,
+            key=lambda p: (p.stat().st_mtime, p.name),
             reverse=True,
         )
         for file_path in files:
@@ -85,7 +85,7 @@ class SessionStore:
         """List metadata for recent sessions, ordered by most recently modified first."""
         files = sorted(
             self.storage_dir.glob("*.json"),
-            key=lambda p: p.stat().st_mtime,
+            key=lambda p: (p.stat().st_mtime, p.name),
             reverse=True,
         )
         
