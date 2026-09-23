@@ -33,8 +33,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from terminal_agent.tools.base import Tool, ToolResult
 from terminal_agent.llm.message import ToolCall
+from terminal_agent.tools.base import Tool
 
 
 class SafetyLevel(Enum):
@@ -63,8 +63,132 @@ class PermissionDecision:
     reason: str = ""
 
 
+import re
+from pathlib import Path
+
+from terminal_agent.tools.base import is_sensitive_path
+
+
+def references_sensitive_file(command: str) -> bool:
+    """Detect if a shell command explicitly targets or references sensitive secret files.
+
+    Examples:
+        'cat .env' -> True
+        'type .env.local' -> True
+        'head -n 5 credentials.json' -> True
+        'cat .env.example' -> False (template files are permitted)
+    """
+    tokens = re.split(r'[\s\'"=;,|<>&]+', command)
+    for token in tokens:
+        if not token:
+            continue
+        clean = token.strip("\"'()[]{}")
+        if not clean or clean.startswith("-"):
+            continue
+        try:
+            filename = Path(clean).name
+            if filename and is_sensitive_path(filename):
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def is_opaque_script_execution(command: str) -> bool:
+    """Detect execution of shell scripts or installer scripts that require user review.
+
+    Examples:
+        'bash setup.sh' -> True
+        'sh install.sh' -> True
+        './run.sh' -> True
+        'powershell ./setup.ps1' -> True
+        'python setup.py' -> True
+        'pip install -e .' -> True
+    """
+    cmd = command.strip().lower()
+    tokens = re.split(r'[\s\'"=;,|<>&]+', cmd)
+    if not tokens or not tokens[0]:
+        return False
+
+    # Read-only inspections (e.g. cat setup.py, type install.sh) are not executions
+    read_only_cmds = ("cat", "type", "head", "tail", "less", "more", "grep")
+    if tokens[0] in read_only_cmds:
+        return False
+
+    script_extensions = (".sh", ".bash", ".ps1", ".bat", ".cmd", ".vbs")
+    for token in tokens:
+        clean = token.strip("\"'()[]{}")
+        if any(clean.endswith(ext) for ext in script_extensions):
+            return True
+        if clean in ("setup.py", "install.py"):
+            return True
+
+    if any(pat in cmd for pat in ("./setup", "./install", "python setup.py", "pip install -e")):
+        return True
+
+    return False
+
+
+def _split_compound_command(command: str) -> list[str] | None:
+    """Split a compound command by shell operators (&&, ||, ;, |, &).
+    Returns list of sub-command strings, or None if command substitution like $() or backticks is used.
+    """
+    if "$(" in command or "`" in command:
+        return None
+
+    pattern = r'''((?:[^"'&|;]+|'[^']*'|"[^"]*")+)|(&&|\|\||[;&|])'''
+    tokens = re.findall(pattern, command)
+    sub_commands = []
+    for token, _ in tokens:
+        t = token.strip()
+        if t:
+            sub_commands.append(t)
+    return sub_commands if sub_commands else [command]
+
+
+def _classify_single_command(cmd: str, safe_commands: list[str], permission_mode: str) -> SafetyLevel:
+    """Classify a single atomic command without chaining operators."""
+    # Commands targeting sensitive secret files (e.g. .env, id_rsa) must never be auto-approved
+    if references_sensitive_file(cmd):
+        return SafetyLevel.NEEDS_APPROVAL
+
+    # Opaque script executions (e.g. bash setup.sh, ./install.sh) must never be auto-approved
+    if is_opaque_script_execution(cmd):
+        return SafetyLevel.NEEDS_APPROVAL
+
+    cmd_base = cmd.split()[0] if cmd else ""
+
+    # Check explicitly safe commands / prefixes
+    if cmd_base in safe_commands or cmd in safe_commands:
+        return SafetyLevel.SAFE
+    for safe in safe_commands:
+        if cmd == safe or cmd.startswith(safe + " "):
+            return SafetyLevel.SAFE
+
+    # Read-only commands are generally safe
+    read_only_starts = (
+        "ls", "dir", "cat", "type", "echo", "pwd", "grep", "find",
+        "head", "tail", "less", "more", "wc", "sort", "uniq", "which", "where",
+    )
+    if cmd_base in read_only_starts:
+        return SafetyLevel.SAFE
+
+    # In auto-test mode, test runners are auto-approved
+    if permission_mode == "auto-test":
+        test_runners = ("pytest", "python -m pytest", "npm test", "yarn test", "jest")
+        if any(cmd == runner or cmd.startswith(runner + " ") for runner in test_runners):
+            return SafetyLevel.SAFE
+
+    return SafetyLevel.NEEDS_APPROVAL
+
+
 def classify_command(command: str, safe_commands: list[str], blocked_patterns: list[str], permission_mode: str) -> SafetyLevel:
     """Classify a raw shell command string's safety level.
+
+    Handles compound commands (&&, ||, ;, |, &) by evaluating every sub-command.
+    If any sub-command is BLOCKED, the entire command is BLOCKED.
+    If any sub-command NEEDS_APPROVAL, the entire command NEEDS_APPROVAL.
+    Only if ALL sub-commands are SAFE is the command classified as SAFE.
 
     Args:
         command:          The command string the agent wants to execute.
@@ -82,30 +206,33 @@ def classify_command(command: str, safe_commands: list[str], blocked_patterns: l
         if pattern in cmd:
             return SafetyLevel.BLOCKED
 
+    # Commands accessing sensitive secret files (e.g. .env, id_rsa) always require approval,
+    # even in yolo mode (consistent with the safety floor principle).
+    if references_sensitive_file(cmd):
+        return SafetyLevel.NEEDS_APPROVAL
+
     # In yolo mode, everything that isn\u2019t blocked is auto-approved.
     if permission_mode == "yolo":
         return SafetyLevel.SAFE
 
-    # Check explicitly safe commands / prefixes.
-    cmd_base = cmd.split()[0] if cmd else ""
-    if cmd_base in safe_commands or cmd in safe_commands:
-        return SafetyLevel.SAFE
+    # Split compound commands and check for command substitution
+    sub_commands = _split_compound_command(cmd)
+    if sub_commands is None:
+        # Command contains $() or backticks; require approval
+        return SafetyLevel.NEEDS_APPROVAL
 
-    # Read-only commands are generally safe.
-    read_only_starts = (
-        "ls", "dir", "cat", "type", "echo", "pwd", "grep", "find",
-        "head", "tail", "less", "more", "wc", "sort", "uniq", "which", "where",
-    )
-    if cmd_base in read_only_starts:
-        return SafetyLevel.SAFE
+    # Evaluate each sub-command
+    for sub_cmd in sub_commands:
+        # Re-check blocked patterns on trimmed sub-command
+        for pattern in blocked_patterns:
+            if pattern in sub_cmd:
+                return SafetyLevel.BLOCKED
 
-    # In auto-test mode, test runners are auto-approved.
-    if permission_mode == "auto-test":
-        test_runners = ("pytest", "python -m pytest", "npm test", "yarn test", "jest")
-        if any(cmd.startswith(runner) for runner in test_runners):
-            return SafetyLevel.SAFE
+        sub_level = _classify_single_command(sub_cmd, safe_commands, permission_mode)
+        if sub_level != SafetyLevel.SAFE:
+            return sub_level
 
-    return SafetyLevel.NEEDS_APPROVAL
+    return SafetyLevel.SAFE
 
 
 class PermissionChecker:
@@ -167,6 +294,11 @@ class PermissionChecker:
         # not disable safety rails that exist to prevent catastrophic mistakes.
         command = tool_call.arguments.get(self.COMMAND_ARGUMENT)
         if command is not None:
+            if references_sensitive_file(command):
+                return PermissionDecision(
+                    outcome=PermissionOutcome.REQUIRE_APPROVAL,
+                    reason=f"Command targets sensitive file ({command!r}); user approval required.",
+                )
             safety = classify_command(
                 command=command,
                 safe_commands=self.safe_commands,

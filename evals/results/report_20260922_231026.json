@@ -1,0 +1,156 @@
+{
+  "timestamp": "2026-09-22T23:10:26.152050",
+  "provider": "mock",
+  "model_name": "mock-eval-model",
+  "total_tasks": 4,
+  "passed_tasks": 4,
+  "failed_tasks": 0,
+  "pass_rate_pct": 100.0,
+  "total_duration_seconds": 0.8,
+  "total_input_tokens": 1600,
+  "total_output_tokens": 500,
+  "total_cost": 0.0031,
+  "results": [
+    {
+      "task_id": "task_01_off_by_one",
+      "task_name": "Fix pagination offset calculation",
+      "passed": true,
+      "category": "bug_fix",
+      "difficulty": "easy",
+      "duration_seconds": 0.25,
+      "iterations": 2,
+      "input_tokens": 400,
+      "output_tokens": 125,
+      "cost": 0.0031,
+      "error_message": null,
+      "test_output": "...                                                                      [100%]\n3 passed in 0.02s",
+      "trial_number": 1,
+      "trajectory": {
+        "total_tool_calls": 1,
+        "unique_tools_used": [
+          "write_file"
+        ],
+        "redundant_file_reads": 0,
+        "failed_tool_calls": 0,
+        "recovery_attempts": 0,
+        "oscillation_detected": false,
+        "tool_sequence": [
+          "write_file"
+        ]
+      },
+      "judge_score": {
+        "code_quality_score": 4.0,
+        "faithfulness_score": 4.5,
+        "overall_score": 4.25,
+        "feedback": "Tests passed.; Faithfully reported passing outcome."
+      }
+    },
+    {
+      "task_id": "task_02_key_error",
+      "task_name": "Handle missing keys in nested config extractor",
+      "passed": true,
+      "category": "bug_fix",
+      "difficulty": "easy",
+      "duration_seconds": 0.18,
+      "iterations": 2,
+      "input_tokens": 400,
+      "output_tokens": 125,
+      "cost": 0.0,
+      "error_message": null,
+      "test_output": "...                                                                      [100%]\n3 passed in 0.03s",
+      "trial_number": 1,
+      "trajectory": {
+        "total_tool_calls": 1,
+        "unique_tools_used": [
+          "write_file"
+        ],
+        "redundant_file_reads": 0,
+        "failed_tool_calls": 0,
+        "recovery_attempts": 0,
+        "oscillation_detected": false,
+        "tool_sequence": [
+          "write_file"
+        ]
+      },
+      "judge_score": {
+        "code_quality_score": 4.0,
+        "faithfulness_score": 4.5,
+        "overall_score": 4.25,
+        "feedback": "Tests passed.; Faithfully reported passing outcome."
+      }
+    },
+    {
+      "task_id": "task_01_off_by_one",
+      "task_name": "Fix pagination offset calculation",
+      "passed": true,
+      "category": "bug_fix",
+      "difficulty": "easy",
+      "duration_seconds": 0.17,
+      "iterations": 2,
+      "input_tokens": 400,
+      "output_tokens": 125,
+      "cost": 0.0,
+      "error_message": null,
+      "test_output": "...                                                                      [100%]\n3 passed in 0.04s",
+      "trial_number": 2,
+      "trajectory": {
+        "total_tool_calls": 1,
+        "unique_tools_used": [
+          "write_file"
+        ],
+        "redundant_file_reads": 0,
+        "failed_tool_calls": 0,
+        "recovery_attempts": 0,
+        "oscillation_detected": false,
+        "tool_sequence": [
+          "write_file"
+        ]
+      },
+      "judge_score": {
+        "code_quality_score": 4.0,
+        "faithfulness_score": 4.5,
+        "overall_score": 4.25,
+        "feedback": "Tests passed.; Faithfully reported passing outcome."
+      }
+    },
+    {
+      "task_id": "task_02_key_error",
+      "task_name": "Handle missing keys in nested config extractor",
+      "passed": true,
+      "category": "bug_fix",
+      "difficulty": "easy",
+      "duration_seconds": 0.2,
+      "iterations": 2,
+      "input_tokens": 400,
+      "output_tokens": 125,
+      "cost": 0.0,
+      "error_message": null,
+      "test_output": "...                                                                      [100%]\n3 passed in 0.03s",
+      "trial_number": 2,
+      "trajectory": {
+        "total_tool_calls": 1,
+        "unique_tools_used": [
+          "write_file"
+        ],
+        "redundant_file_reads": 0,
+        "failed_tool_calls": 0,
+        "recovery_attempts": 0,
+        "oscillation_detected": false,
+        "tool_sequence": [
+          "write_file"
+        ]
+      },
+      "judge_score": {
+        "code_quality_score": 4.0,
+        "faithfulness_score": 4.5,
+        "overall_score": 4.25,
+        "feedback": "Tests passed.; Faithfully reported passing outcome."
+      }
+    }
+  ],
+  "trials_per_task": 2,
+  "pass_at_k_pct": 100.0,
+  "pass_all_k_pct": 100.0,
+  "avg_code_quality": 4.0,
+  "avg_faithfulness": 4.5
+}

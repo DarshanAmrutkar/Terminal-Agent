@@ -38,12 +38,13 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import AsyncGenerator, Any
+from collections.abc import AsyncGenerator
+from typing import Any
 
-from openai import AsyncOpenAI, APIError, APIConnectionError, RateLimitError
+from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
 
 from .base import LLMProvider
-from .message import Message, Role, ToolCall, ToolResultContent, StreamEvent, LLMResponse
+from .message import LLMResponse, Message, Role, StreamEvent, ToolCall
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +220,7 @@ class OpenAICompatibleProvider(LLMProvider):
         if formatted_tools:
             kwargs["tools"] = formatted_tools
             kwargs["tool_choice"] = "auto"
+            kwargs["parallel_tool_calls"] = True
 
         retries = 0
         while True:
@@ -299,6 +301,7 @@ class OpenAICompatibleProvider(LLMProvider):
         if formatted_tools:
             kwargs["tools"] = formatted_tools
             kwargs["tool_choice"] = "auto"
+            kwargs["parallel_tool_calls"] = True
 
         # Accumulate tool call arguments across chunks.
         # OpenAI sends partial JSON in multiple deltas keyed by index.
@@ -365,9 +368,8 @@ class OpenAICompatibleProvider(LLMProvider):
                                 text=tc_delta.function.arguments,
                             )
 
-                # --- Stream end ---
-                if choice.finish_reason is not None:
-                    # Finalize all accumulated tool calls
+                # --- Tool call finalization on finish_reason ---
+                if choice.finish_reason is not None and tool_call_accumulators:
                     for acc in tool_call_accumulators.values():
                         try:
                             arguments = json.loads(acc["arguments"]) if acc["arguments"] else {}
@@ -386,9 +388,26 @@ class OpenAICompatibleProvider(LLMProvider):
                                 arguments=arguments,
                             ),
                         )
-
                     tool_call_accumulators.clear()
-                    yield StreamEvent(type="message_end")
+
+            # Finalize any remaining tool calls after all chunks have been processed
+            for acc in tool_call_accumulators.values():
+                try:
+                    arguments = json.loads(acc["arguments"]) if acc["arguments"] else {}
+                except json.JSONDecodeError:
+                    arguments = {}
+                yield StreamEvent(
+                    type="tool_call_end",
+                    tool_call=ToolCall(
+                        id=acc["id"],
+                        name=acc["name"],
+                        arguments=arguments,
+                    ),
+                )
+            tool_call_accumulators.clear()
+
+            # End of stream event — emitted after ALL chunks (including usage) are read
+            yield StreamEvent(type="message_end")
 
         except (APIConnectionError, RateLimitError, APIError) as e:
             logger.error(f"OpenAI-compatible stream error: {e}")

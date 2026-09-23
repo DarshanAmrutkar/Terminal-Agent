@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import os
 from enum import Enum
-from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -21,6 +20,13 @@ class PermissionMode(str, Enum):
     SAFE = "safe"
     AUTO_TEST = "auto-test"
     YOLO = "yolo"
+
+
+class ExecutionMode(str, Enum):
+    """Execution architecture: Autonomous ReAct loop vs Agentless Fast Path."""
+    REACT = "react"
+    FAST_PATH = "fast_path"
+    AUTO = "auto"
 
 
 class AgentConfig(BaseSettings):
@@ -40,7 +46,7 @@ class AgentConfig(BaseSettings):
     )
 
     # --- Active Profile & Model Settings ---
-    profile: Optional[str] = Field(
+    profile: str | None = Field(
         default=None,
         description="Active model profile preset (e.g. 'sonnet', 'nemotron', 'deepseek')",
     )
@@ -57,6 +63,20 @@ class AgentConfig(BaseSettings):
         description="Max output tokens per LLM response",
     )
 
+    # --- Provider Failover & Circuit Breaker ---
+    fallback_provider: str | None = Field(
+        default=None,
+        description="Fallback provider to switch to on rate limits/outages (e.g. 'openrouter', 'openai')",
+    )
+    fallback_model: str | None = Field(
+        default=None,
+        description="Model name for fallback provider",
+    )
+    enable_failover: bool = Field(
+        default=False,
+        description="Whether to enable automated circuit-breaker provider failover",
+    )
+
     # --- Agent Policy Settings ---
     max_iterations: int = Field(
         default=25,
@@ -65,6 +85,14 @@ class AgentConfig(BaseSettings):
     permission_mode: PermissionMode = Field(
         default=PermissionMode.SAFE,
         description="Command approval mode: safe, auto-test, yolo",
+    )
+    execution_mode: ExecutionMode = Field(
+        default=ExecutionMode.REACT,
+        description="Execution mode: 'react' (autonomous ReAct loop), 'fast_path' (Agentless 3-phase repair), or 'auto'",
+    )
+    enable_domain_guardrail: bool = Field(
+        default=True,
+        description="Enable software engineering domain guardrails to reject off-topic queries.",
     )
 
     # --- Context Settings ---
@@ -108,15 +136,33 @@ class AgentConfig(BaseSettings):
         description="Command patterns that are always blocked",
     )
 
+    # --- Sandbox Settings ---
+    sandbox_mode: str = Field(
+        default="local",
+        description="Command execution sandbox mode: local, docker, disabled",
+    )
+    sandbox_allow_network: bool = Field(
+        default=True,
+        description="Whether network access is allowed within the execution sandbox",
+    )
+    sandbox_docker_image: str = Field(
+        default="python:3.12-slim",
+        description="Docker container image for docker sandbox mode",
+    )
+    sandbox_ephemeral: bool = Field(
+        default=False,
+        description="Run commands in an ephemeral copy-on-write workspace to prevent destructive modifications to host files",
+    )
+
     # --- API Keys (loaded from standard env var names, not AGENT_ prefix) ---
-    anthropic_api_key: Optional[str] = Field(default=None)
-    openai_api_key: Optional[str] = Field(default=None)
-    google_api_key: Optional[str] = Field(default=None)
-    nvidia_api_key: Optional[str] = Field(default=None)
-    openrouter_api_key: Optional[str] = Field(default=None)
+    anthropic_api_key: str | None = Field(default=None)
+    openai_api_key: str | None = Field(default=None)
+    google_api_key: str | None = Field(default=None)
+    nvidia_api_key: str | None = Field(default=None)
+    openrouter_api_key: str | None = Field(default=None)
 
     # --- Base URL Settings ---
-    base_url: Optional[str] = Field(
+    base_url: str | None = Field(
         default=None,
         description="Custom base URL override for OpenAI-compatible endpoints",
     )
@@ -185,7 +231,7 @@ class AgentConfig(BaseSettings):
             description=f"{self.provider} / {self.model_name}",
         )
 
-    def get_api_key(self, provider: Optional[str] = None) -> str | None:
+    def get_api_key(self, provider: str | None = None) -> str | None:
         """Get the API key for the configured or specified provider."""
         p = provider or self.provider
         key_map = {
@@ -197,7 +243,7 @@ class AgentConfig(BaseSettings):
         }
         return key_map.get(p)
 
-    def get_base_url(self, provider: Optional[str] = None) -> str | None:
+    def get_base_url(self, provider: str | None = None) -> str | None:
         """Return the API base URL for OpenAI-compatible providers."""
         if self.base_url:
             return self.base_url
@@ -209,7 +255,7 @@ class AgentConfig(BaseSettings):
         }
         return url_map.get(p)
 
-    def validate_api_key(self, provider: Optional[str] = None) -> None:
+    def validate_api_key(self, provider: str | None = None) -> None:
         """Raise ValueError if the API key for the provider is missing."""
         p = provider or self.provider
         key = self.get_api_key(p)

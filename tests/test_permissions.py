@@ -6,18 +6,15 @@ starting an Agent or making any LLM calls.
 
 from __future__ import annotations
 
-import pytest
-
+from terminal_agent.llm.message import ToolCall
+from terminal_agent.tools.read_file import ReadFileTool
+from terminal_agent.tools.run_command import RunCommandTool
 from terminal_agent.utils.permissions import (
     PermissionChecker,
     PermissionOutcome,
     SafetyLevel,
     classify_command,
 )
-from terminal_agent.tools.run_command import RunCommandTool
-from terminal_agent.tools.read_file import ReadFileTool
-from terminal_agent.llm.message import ToolCall
-
 
 # ---------------------------------------------------------------------------
 # Helpers

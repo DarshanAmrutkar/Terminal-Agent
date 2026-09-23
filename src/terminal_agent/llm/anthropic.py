@@ -1,14 +1,16 @@
 from __future__ import annotations
+
 import asyncio
 import json
 import logging
-from typing import AsyncGenerator, Any
+from collections.abc import AsyncGenerator
+from typing import Any
 
 import tiktoken
-from anthropic import AsyncAnthropic, APIError, APIConnectionError, RateLimitError
+from anthropic import APIConnectionError, APIError, AsyncAnthropic, RateLimitError
 
-from .message import Message, Role, ToolCall, ToolResultContent, StreamEvent, LLMResponse
 from .base import LLMProvider
+from .message import LLMResponse, Message, Role, StreamEvent, ToolCall
 
 logger = logging.getLogger(__name__)
 
@@ -29,18 +31,21 @@ class AnthropicProvider(LLMProvider):
         # fallback simple approximation
         return len(text.split()) * 4 // 3
 
-    def format_tools(self, tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def format_tools(self, tools: list[dict[str, Any]], enable_cache: bool = True) -> list[dict[str, Any]]:
         formatted_tools = []
-        for tool in tools:
+        for i, tool in enumerate(tools):
             formatted_tool = {
                 "name": tool["name"],
                 "description": tool.get("description", ""),
                 "input_schema": tool.get("parameters", tool.get("input_schema", {"type": "object", "properties": {}}))
             }
+            # Cache all tools together by tagging the final tool definition
+            if enable_cache and i == len(tools) - 1:
+                formatted_tool["cache_control"] = {"type": "ephemeral"}
             formatted_tools.append(formatted_tool)
         return formatted_tools
 
-    def _prepare_messages(self, messages: list[Message]) -> tuple[str, list[dict[str, Any]]]:
+    def _prepare_messages(self, messages: list[Message]) -> tuple[Any, list[dict[str, Any]]]:
         system_content = ""
         anthropic_messages: list[dict[str, Any]] = []
 
@@ -79,7 +84,14 @@ class AnthropicProvider(LLMProvider):
                         })
                 anthropic_messages.append({"role": "user", "content": content})
 
-        return system_content.strip(), anthropic_messages
+        # Cache the system prompt prefix if non-empty
+        clean_system = system_content.strip()
+        system_param: Any = (
+            [{"type": "text", "text": clean_system, "cache_control": {"type": "ephemeral"}}]
+            if clean_system else ""
+        )
+
+        return system_param, anthropic_messages
 
     async def _with_retry(self, func, *args, **kwargs):
         retries = 0
@@ -129,10 +141,15 @@ class AnthropicProvider(LLMProvider):
         if stop_reason == "tool_use":
             pass # remains tool_use
         
+        cache_creation = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
+        cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
+
         return LLMResponse(
             message=message,
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
+            cache_creation_input_tokens=cache_creation,
+            cache_read_input_tokens=cache_read,
             stop_reason=stop_reason
         )
 
@@ -155,8 +172,26 @@ class AnthropicProvider(LLMProvider):
                 current_tool_name = None
                 current_tool_input_json = ""
                 
+                input_tokens = 0
+                cache_creation_tokens = 0
+                cache_read_tokens = 0
                 async for event in stream:
-                    if event.type == "content_block_start":
+                    if event.type == "message_start":
+                        if hasattr(event, "message") and hasattr(event.message, "usage"):
+                            usage = event.message.usage
+                            input_tokens = getattr(usage, "input_tokens", 0) or 0
+                            cache_creation_tokens = getattr(usage, "cache_creation_input_tokens", 0) or 0
+                            cache_read_tokens = getattr(usage, "cache_read_input_tokens", 0) or 0
+                            yield StreamEvent(
+                                type="usage",
+                                usage={
+                                    "input_tokens": input_tokens,
+                                    "output_tokens": 0,
+                                    "cache_creation_input_tokens": cache_creation_tokens,
+                                    "cache_read_input_tokens": cache_read_tokens,
+                                },
+                            )
+                    elif event.type == "content_block_start":
                         if event.content_block.type == "text":
                             yield StreamEvent(type="text_delta")
                         elif event.content_block.type == "tool_use":
@@ -183,15 +218,16 @@ class AnthropicProvider(LLMProvider):
                             current_tool_name = None
                             current_tool_input_json = ""
                     elif event.type == "message_delta":
-                        # This event carries the real token usage for the entire request.
-                        # It is the authoritative source — far more accurate than any
-                        # client-side estimation using tiktoken.
+                        # This event carries output token usage
                         if hasattr(event, 'usage') and event.usage is not None:
+                            output_tokens = getattr(event.usage, 'output_tokens', 0) or 0
                             yield StreamEvent(
                                 type="usage",
                                 usage={
-                                    "input_tokens": getattr(event.usage, 'input_tokens', 0) or 0,
-                                    "output_tokens": getattr(event.usage, 'output_tokens', 0) or 0,
+                                    "input_tokens": input_tokens,
+                                    "output_tokens": output_tokens,
+                                    "cache_creation_input_tokens": cache_creation_tokens,
+                                    "cache_read_input_tokens": cache_read_tokens,
                                 },
                             )
                     elif event.type == "message_stop":

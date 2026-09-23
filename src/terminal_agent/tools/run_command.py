@@ -1,5 +1,8 @@
-import asyncio
-from typing import Any, Dict, Optional
+from pathlib import Path
+from typing import Any
+
+from terminal_agent.sandbox.base import SandboxBackend, SandboxPolicy, SandboxResult
+from terminal_agent.sandbox.local import LocalRestrictedSandbox
 
 from .base import Tool, ToolResult
 from .registry import register_tool
@@ -7,7 +10,11 @@ from .registry import register_tool
 
 @register_tool
 class RunCommandTool(Tool):
-    """Tool for executing shell commands."""
+    """Tool for executing shell commands inside a secured execution sandbox."""
+
+    def __init__(self, sandbox: SandboxBackend | None = None, working_dir: str | None = None):
+        self.sandbox = sandbox
+        self.working_dir = Path(working_dir).resolve() if working_dir else Path.cwd()
 
     @property
     def name(self) -> str:
@@ -18,7 +25,7 @@ class RunCommandTool(Tool):
         return "Execute a shell command in the system."
 
     @property
-    def parameters(self) -> Dict[str, Any]:
+    def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -45,62 +52,39 @@ class RunCommandTool(Tool):
     async def execute(
         self, 
         command: str, 
-        cwd: Optional[str] = None, 
+        cwd: str | None = None, 
         timeout: int = 120, 
         **kwargs
     ) -> ToolResult:
         try:
-            process = await asyncio.create_subprocess_shell(
-                command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=cwd
+            # Determine active sandbox backend
+            sandbox = self.sandbox
+            if sandbox is None:
+                effective_dir = Path(cwd).resolve() if cwd else self.working_dir
+                policy = SandboxPolicy(working_dir=effective_dir, timeout_seconds=timeout)
+                sandbox = LocalRestrictedSandbox(policy=policy)
+
+            # Execute command inside sandbox
+            result: SandboxResult = await sandbox.execute(
+                command=command,
+                cwd=cwd,
+                timeout=timeout,
             )
 
-            try:
-                stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                    process.communicate(), timeout=timeout
-                )
-            except asyncio.TimeoutError:
-                process.kill()
-                return ToolResult(
-                    output=f"Error: Command timed out after {timeout} seconds.",
-                    is_error=True
-                )
-
-            stdout = stdout_bytes.decode('utf-8', errors='replace').strip()
-            stderr = stderr_bytes.decode('utf-8', errors='replace').strip()
-            returncode = process.returncode
-
-            # Truncate output if necessary (prevent context explosion)
-            max_len = 10000
-            if len(stdout) > max_len:
-                stdout = stdout[:max_len] + f"\n... [stdout truncated from {len(stdout)} characters]"
-            if len(stderr) > max_len:
-                stderr = stderr[:max_len] + f"\n... [stderr truncated from {len(stderr)} characters]"
-
-            output_blocks = []
-            if stdout:
-                output_blocks.append(f"STDOUT:\n{stdout}")
-            if stderr:
-                output_blocks.append(f"STDERR:\n{stderr}")
-                
-            if not output_blocks:
-                result_text = "Command executed successfully with no output."
-            else:
-                result_text = "\n\n".join(output_blocks)
-
             return ToolResult(
-                output=result_text,
-                is_error=(returncode != 0),
+                output=result.formatted_output,
+                is_error=result.is_error,
                 metadata={
-                    "returncode": returncode,
-                    "cwd": cwd
+                    "returncode": result.returncode,
+                    "cwd": cwd or str(self.working_dir),
+                    "timed_out": result.timed_out,
+                    "truncated": result.truncated,
+                    "sandbox": sandbox.name,
                 }
             )
 
         except Exception as e:
             return ToolResult(
-                output=f"Failed to execute command: {str(e)}", 
+                output=f"Failed to execute command: {e!s}", 
                 is_error=True
             )

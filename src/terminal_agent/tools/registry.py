@@ -24,8 +24,6 @@ Why not just a plain dict in Agent?
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Type
-
 from .base import Tool
 
 # ---------------------------------------------------------------------------
@@ -33,24 +31,31 @@ from .base import Tool
 # ---------------------------------------------------------------------------
 # The @register_tool decorator appends tool *classes* here at import time.
 # Nothing is instantiated. Agent decides when and how to create instances.
-_TOOL_CLASSES: list[Type[Tool]] = []
+_TOOL_CLASSES: list[type[Tool]] = []
 
 
-def register_tool(cls: Type[Tool]) -> Type[Tool]:
-    """Decorator that marks a Tool subclass for automatic registration.
-
-    Usage::
-
-        @register_tool
-        class ReadFileTool(Tool):
-            ...
-
-    The class is appended to _TOOL_CLASSES. When a ToolRegistry is created and
-    load_defaults() is called, all decorated classes are instantiated and
-    registered in that registry instance.
-    """
+def register_tool(cls: type[Tool]) -> type[Tool]:
+    """Decorator that marks a Tool subclass for automatic registration."""
     _TOOL_CLASSES.append(cls)
     return cls
+
+
+def discover_builtin_tools() -> None:
+    """Dynamically discover and import all tool modules in terminal_agent.tools.
+
+    Eliminates hardcoded tool imports in Agent (Dependency Inversion Principle).
+    """
+    import importlib
+    import pkgutil
+
+    import terminal_agent.tools as tools_pkg
+
+    for _, module_name, _ in pkgutil.iter_modules(tools_pkg.__path__):
+        if module_name not in ("base", "registry"):
+            try:
+                importlib.import_module(f"terminal_agent.tools.{module_name}")
+            except Exception:
+                pass
 
 
 # ---------------------------------------------------------------------------
@@ -88,23 +93,18 @@ class ToolRegistry:
         """
         self._tools[tool.name] = tool
 
-    def register_class(self, tool_class: Type[Tool]) -> None:
+    def register_class(self, tool_class: type[Tool]) -> None:
         """Instantiate a tool class and register it."""
         self.register(tool_class())
 
     def load_defaults(self) -> None:
-        """Instantiate and register all tools decorated with @register_tool.
-
-        Call this once after importing all tool modules::
-
-            import terminal_agent.tools.read_file      # triggers @register_tool
-            import terminal_agent.tools.write_file
-            ...
-            registry = ToolRegistry()
-            registry.load_defaults()
-        """
+        """Discover and instantiate all default tools registered with @register_tool."""
+        discover_builtin_tools()
         for tool_class in _TOOL_CLASSES:
-            self.register(tool_class())
+            # Avoid registering duplicate tool instances if load_defaults is called multiple times
+            sample = tool_class()
+            if sample.name not in self._tools:
+                self.register(sample)
 
     # ------------------------------------------------------------------
     # Lookup

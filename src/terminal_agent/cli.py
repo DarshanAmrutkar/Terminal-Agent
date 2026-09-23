@@ -7,24 +7,22 @@ streaming responses, command history, and slash commands.
 from __future__ import annotations
 
 import asyncio
-import sys
 
 from prompt_toolkit import PromptSession
-from prompt_toolkit.history import FileHistory
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
-from rich.console import Console
+from prompt_toolkit.history import FileHistory
 from rich.panel import Panel
 from rich.text import Text
 
 from terminal_agent.core.agent import Agent
 from terminal_agent.core.config import AgentConfig
+from terminal_agent.core.session_store import SessionStore
 from terminal_agent.llm.profiles import list_profiles
 from terminal_agent.utils.display import (
     console,
-    display_welcome,
     display_status_bar,
+    display_welcome,
 )
-from terminal_agent.utils.cost import CostTracker
 
 
 def _get_history_path() -> str:
@@ -35,7 +33,10 @@ def _get_history_path() -> str:
     return str(history_dir / "history.txt")
 
 
-async def run_interactive(config: AgentConfig | None = None) -> None:
+async def run_interactive(
+    config: AgentConfig | None = None,
+    resume_id: str | None = None,
+) -> None:
     """Run the interactive CLI session.
     
     This is the main interactive loop that:
@@ -52,17 +53,50 @@ async def run_interactive(config: AgentConfig | None = None) -> None:
     display_welcome()
     console.print(f"[dim]Provider: {config.provider} | Model: {config.model_name}[/dim]")
     console.print(f"[dim]Permission mode: {config.permission_mode.value}[/dim]")
+
+    session_store = SessionStore()
+    resumed_session = None
+    if resume_id:
+        if resume_id.lower() in ("latest", "last"):
+            resumed_session = session_store.get_latest_session()
+        else:
+            resumed_session = session_store.load_session(resume_id)
+
+        if resumed_session:
+            console.print(
+                f"[bold green]✓ Resumed session: {resumed_session.session_id}[/bold green] "
+                f"([dim]{len(resumed_session.messages)} messages, {len(resumed_session.active_files)} active files[/dim])"
+            )
+        else:
+            console.print(
+                f"[bold yellow]⚠ Could not find session '{resume_id}'. Starting a fresh session.[/bold yellow]"
+            )
+
     console.print()
 
     # Initialize the agent
     try:
-        agent = Agent(config)
+        agent = Agent(config, session=resumed_session, session_store=session_store)
     except ValueError as e:
         console.print(f"[bold red]Configuration Error:[/bold red] {e}")
         console.print(
             "[dim]Set your API key: export ANTHROPIC_API_KEY=your-key-here[/dim]"
         )
         return
+
+    # Report active sandbox status
+    if agent.sandbox.name == "docker":
+        console.print("[dim]Sandbox: Docker container (Isolated container)[/dim]")
+    elif config.sandbox_mode == "docker" and agent.sandbox.name != "docker":
+        console.print(
+            "[bold yellow]⚠ Sandbox Warning:[/bold yellow] [dim]Docker mode was requested, but Docker is not installed or running.\n"
+            "Falling back to Local restricted (Host subprocess with env scrubbing).[/dim]"
+        )
+    elif agent.sandbox.name == "local_restricted":
+        ephemeral_note = " [ephemeral copy]" if getattr(config, "sandbox_ephemeral", False) else ""
+        console.print(f"[dim]Sandbox: Local restricted (Host subprocess with env scrubbing){ephemeral_note}[/dim]")
+    else:
+        console.print("[dim]Sandbox: Disabled (Unrestricted host execution)[/dim]")
 
     # Set up prompt with history
     prompt_session: PromptSession = PromptSession(
@@ -102,15 +136,23 @@ async def run_interactive(config: AgentConfig | None = None) -> None:
             console.print()
 
             # Show status after each turn
+            active_context = (
+                agent.session.current_context_tokens
+                if agent.session.current_context_tokens > 0
+                else agent.session.estimate_active_tokens()
+            )
             display_status_bar(
-                config.model_name,
-                agent.session.total_input_tokens + agent.session.total_output_tokens,
-                config.max_context_tokens,
+                model=config.model_name,
+                tokens_used=active_context,
+                max_tokens=config.max_context_tokens,
+                cumulative_tokens=agent.session.total_input_tokens + agent.session.total_output_tokens,
+                session_cost=agent.cost_tracker.get_session_cost(),
             )
             console.print()
 
-        except KeyboardInterrupt:
-            console.print("\n[dim]Use /exit to quit.[/dim]")
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            console.print("\n[bold yellow]⚡ Operation interrupted (Ctrl+C). Session state preserved.[/bold yellow]")
+            console.print("[dim]Type your next message to continue, or /exit to quit.[/dim]\n")
             continue
         except EOFError:
             _goodbye(agent)
@@ -133,6 +175,8 @@ def _handle_slash_command(command: str, agent: Agent, config: AgentConfig) -> bo
         help_text = Text()
         help_text.append("/help", style="bold cyan")
         help_text.append("             — Show this help message\n")
+        help_text.append("/sessions", style="bold cyan")
+        help_text.append("         — List recent saved sessions\n")
         help_text.append("/clear", style="bold cyan")
         help_text.append("            — Clear conversation history\n")
         help_text.append("/cost", style="bold cyan")
@@ -146,6 +190,30 @@ def _handle_slash_command(command: str, agent: Agent, config: AgentConfig) -> bo
         help_text.append("/exit", style="bold cyan")
         help_text.append("             — Exit the agent")
         console.print(Panel(help_text, title="📖 Commands", border_style="cyan"))
+
+    elif cmd in ("/sessions", "/history"):
+        store = SessionStore()
+        sessions = store.list_sessions(limit=10)
+        if not sessions:
+            console.print("[dim]No saved sessions found.[/dim]")
+        else:
+            from rich.table import Table
+            table = Table(title="Recent Sessions", border_style="cyan")
+            table.add_column("Session ID", style="bold green")
+            table.add_column("Updated", style="dim")
+            table.add_column("Msgs", justify="right")
+            table.add_column("Tokens", justify="right")
+            table.add_column("Preview", style="italic")
+            for s in sessions:
+                table.add_row(
+                    s["session_id"],
+                    s["updated_at"],
+                    str(s["message_count"]),
+                    f"{s['total_tokens']:,}",
+                    s["preview"],
+                )
+            console.print(table)
+            console.print("[dim]Resume any session via: agent --resume <session_id>[/dim]\n")
 
     elif cmd == "/clear":
         agent.session.clear_history()
