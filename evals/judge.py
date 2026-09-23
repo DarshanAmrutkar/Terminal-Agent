@@ -71,27 +71,15 @@ class CodeJudge:
                 cq_steps_txt = "\n".join(f"- {s}" for s in CODE_QUALITY_STEPS)
                 faith_steps_txt = "\n".join(f"- {s}" for s in FAITHFULNESS_STEPS)
 
-                prompt = (
-                    "You are an expert AI evaluator implementing the G-Eval evaluation framework.\n"
-                    "Evaluate the agent's code solution and explanation using step-by-step Chain-of-Thought.\n\n"
-                    f"### Task Prompt:\n{task_prompt}\n\n"
-                    f"### Code Diff:\n{code_diff or '(No changes)'}\n\n"
-                    f"### Agent Explanation:\n{agent_explanation}\n\n"
-                    f"### Pytest Outcome:\n{'PASSED' if tests_passed else 'FAILED'}\n\n"
-                    f"### Code Quality Steps (Score 1.0 to 5.0):\n{cq_steps_txt}\n\n"
-                    f"### Faithfulness Steps (Score 1.0 to 5.0):\n{faith_steps_txt}\n\n"
-                    "INSTRUCTIONS:\n"
-                    "1. Evaluate each step sequentially and formulate step reasoning.\n"
-                    "2. Assign code_quality (1.0 to 5.0) and faithfulness (1.0 to 5.0).\n"
-                    "3. Respond ONLY in valid JSON format matching this schema:\n"
-                    "{\n"
-                    '  "code_quality": <float 1.0-5.0>,\n'
-                    '  "faithfulness": <float 1.0-5.0>,\n'
-                    '  "geval_steps": [\n'
-                    '    {"step": 1, "criterion": "...", "passed": true, "reasoning": "..."}\n'
-                    "  ],\n"
-                    '  "feedback": "<concise summary of findings>"\n'
-                    "}"
+                from terminal_agent.utils.prompt_loader import load_prompt
+                prompt = load_prompt(
+                    "judge_eval",
+                    task_prompt=task_prompt,
+                    code_diff=code_diff or "(No changes)",
+                    agent_explanation=agent_explanation,
+                    pytest_outcome="PASSED" if tests_passed else "FAILED",
+                    code_quality_steps=cq_steps_txt,
+                    faithfulness_steps=faith_steps_txt,
                 )
 
                 response = await self.provider.send([Message.user(prompt)])

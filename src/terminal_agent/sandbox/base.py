@@ -78,6 +78,24 @@ DEFAULT_BLOCKED_ENV_PATTERNS: list[str] = [
 ]
 
 
+NETWORK_COMMAND_PATTERNS: tuple[str, ...] = (
+    "curl", "wget", "nc", "ncat", "netcat", "telnet", "ssh", "scp", "sftp",
+    "ftp", "tftp", "rsync", "socat", "invoke-webrequest", "invoke-restmethod",
+    "iwr", "irm",
+)
+
+
+def is_network_command(command: str) -> bool:
+    """Check if a shell command attempts outbound network communication."""
+    import re
+    tokens = re.split(r'[\s\'"=;,|<>&]+', command.lower())
+    for token in tokens:
+        clean = token.strip("\"'()[]{}")
+        if clean in NETWORK_COMMAND_PATTERNS or any(clean == f"{cmd}.exe" for cmd in NETWORK_COMMAND_PATTERNS):
+            return True
+    return False
+
+
 @dataclass
 class SandboxPolicy:
     """Policy rules governing sandboxed command execution."""
@@ -87,6 +105,7 @@ class SandboxPolicy:
     allow_network: bool = True
     timeout_seconds: int = 120
     max_output_chars: int = 10000
+    ephemeral: bool = False
 
     def sanitize_environment(self, base_env: dict[str, str] | None = None) -> dict[str, str]:
         """Produce a scrubbed environment dictionary stripping secrets and unwhitelisted keys."""

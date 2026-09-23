@@ -84,6 +84,20 @@ async def run_interactive(
         )
         return
 
+    # Report active sandbox status
+    if agent.sandbox.name == "docker":
+        console.print("[dim]Sandbox: Docker container (Isolated container)[/dim]")
+    elif config.sandbox_mode == "docker" and agent.sandbox.name != "docker":
+        console.print(
+            "[bold yellow]⚠ Sandbox Warning:[/bold yellow] [dim]Docker mode was requested, but Docker is not installed or running.\n"
+            "Falling back to Local restricted (Host subprocess with env scrubbing).[/dim]"
+        )
+    elif agent.sandbox.name == "local_restricted":
+        ephemeral_note = " [ephemeral copy]" if getattr(config, "sandbox_ephemeral", False) else ""
+        console.print(f"[dim]Sandbox: Local restricted (Host subprocess with env scrubbing){ephemeral_note}[/dim]")
+    else:
+        console.print("[dim]Sandbox: Disabled (Unrestricted host execution)[/dim]")
+
     # Set up prompt with history
     prompt_session: PromptSession = PromptSession(
         history=FileHistory(_get_history_path()),

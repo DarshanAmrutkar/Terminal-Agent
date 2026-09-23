@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+from typing import Any
 
 from terminal_agent.core.config import AgentConfig
 from terminal_agent.core.events import (
@@ -94,6 +95,7 @@ class Agent:
             working_dir=Path(self.working_dir),
             allow_network=getattr(config, "sandbox_allow_network", True),
             timeout_seconds=getattr(config, "timeout", 120),
+            ephemeral=getattr(config, "sandbox_ephemeral", False),
         )
         self.sandbox = create_sandbox(
             mode=getattr(config, "sandbox_mode", "local"),
@@ -246,21 +248,13 @@ class Agent:
 
     def _load_system_prompt(self) -> str:
         """Load the system prompt template and fill in placeholders."""
-        prompt_path = Path(__file__).parent.parent.parent.parent / "prompts" / "system.md"
-        
-        if prompt_path.exists():
-            template = prompt_path.read_text(encoding="utf-8")
-        else:
-            template = (
-                "You are Terminal Agent, an expert AI coding assistant. "
-                "You help users understand, modify, and debug code in their repositories. "
-                "Current directory: {cwd}\n\n{repo_map}"
-            )
-        
+        from terminal_agent.utils.prompt_loader import load_prompt
+
         # Build an AST-driven repository symbol map
         repo_map = self._build_repo_map()
-        
-        return template.format(
+
+        return load_prompt(
+            "system",
             cwd=self.working_dir,
             repo_map=repo_map,
         )

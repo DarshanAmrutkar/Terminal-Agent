@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from terminal_agent.utils.prompt_loader import load_prompt
+
 if TYPE_CHECKING:
     from terminal_agent.llm.base import LLMProvider
 
@@ -43,21 +45,6 @@ DEFAULT_DOMAIN_REFUSAL = (
     "debugging, code refactoring, and terminal operations.\n\n"
     "Please feel free to ask a question related to your code, repository, or development tasks!"
 )
-
-INTENT_SYSTEM_PROMPT = """You are an intent classifier for Terminal Agent, an AI coding assistant.
-Classify whether the user prompt belongs to the software development domain or is off-topic.
-
-Categories:
-- coding: Writing code, debugging, algorithms, testing, refactoring, code review.
-- repo_inspection: Examining project files, architecture, repository layout.
-- terminal_devops: Shell commands, git, Docker, dependencies, environment setup.
-- computational_task: Counting, mathematical logic, string transformations, computational scripts.
-- off_topic: General world knowledge, politics, trivia, sports, cooking, entertainment, creative writing, advice.
-
-Respond in strict JSON with no markdown wrapping:
-{"intent": "coding" | "repo_inspection" | "terminal_devops" | "computational_task" | "off_topic", "is_in_domain": true | false, "reason": "brief 1-sentence reason"}
-"""
-
 
 class SemanticIntentClassifier:
     """Classifies user intent dynamically using semantic taxonomy and intent signals."""
@@ -147,7 +134,7 @@ class SemanticIntentClassifier:
                     from terminal_agent.llm.message import Message
 
                     messages = [
-                        Message.system(INTENT_SYSTEM_PROMPT),
+                        Message.system(load_prompt("intent_classifier")),
                         Message.user(f"Classify this prompt: \"{cleaned}\""),
                     ]
                     response = await provider.send(messages)

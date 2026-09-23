@@ -3,7 +3,14 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from .base import Tool, ToolResult, resolve_safe_path
+from .base import (
+    ALLOWED_SENSITIVE_EXCEPTIONS,
+    SENSITIVE_FILE_PATTERNS,
+    Tool,
+    ToolResult,
+    is_sensitive_path,
+    resolve_safe_path,
+)
 from .registry import register_tool
 
 
@@ -102,6 +109,8 @@ def _python_grep(
                     files_to_search.append(fp)
 
     for fp in files_to_search:
+        if is_sensitive_path(fp):
+            continue
         try:
             with open(fp, "r", encoding="utf-8", errors="ignore") as f:
                 for line_num, line in enumerate(f, 1):
@@ -131,6 +140,12 @@ def _run_ripgrep_with_fallback(
     if case_insensitive:
         cmd.append("-i")
 
+    # Exclude sensitive files from ripgrep
+    for pat in SENSITIVE_FILE_PATTERNS:
+        cmd.extend(["-g", f"!{pat}"])
+    for allowed in ALLOWED_SENSITIVE_EXCEPTIONS:
+        cmd.extend(["-g", allowed])
+
     if includes:
         for glob in includes:
             cmd.extend(["-g", glob])
@@ -147,9 +162,21 @@ def _run_ripgrep_with_fallback(
         )
 
         if result.returncode == 0:
-            lines = result.stdout.splitlines()[:50]
-            output = "\n".join(lines)
-            if len(result.stdout.splitlines()) > 50:
+            raw_lines = result.stdout.splitlines()
+            filtered_lines: list[str] = []
+            for line in raw_lines:
+                parts = line.split(":", 2)
+                if parts and is_sensitive_path(parts[0]):
+                    continue
+                filtered_lines.append(line)
+                if len(filtered_lines) >= 50:
+                    break
+
+            if not filtered_lines:
+                return ToolResult(output="No matches found.")
+
+            output = "\n".join(filtered_lines)
+            if len(raw_lines) > 50:
                 output += "\n... [Output truncated to 50 lines]"
             return ToolResult(output=output)
         elif result.returncode == 1:

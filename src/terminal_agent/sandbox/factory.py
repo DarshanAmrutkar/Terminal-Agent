@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from pathlib import Path
 
 from terminal_agent.sandbox.base import SandboxBackend, SandboxPolicy, SandboxResult
 from terminal_agent.sandbox.docker import DockerSandbox
 from terminal_agent.sandbox.local import LocalRestrictedSandbox, _kill_process_tree
+
+logger = logging.getLogger(__name__)
 
 
 class DisabledSandbox(SandboxBackend):
@@ -93,7 +96,10 @@ def create_sandbox(
         docker_sb = DockerSandbox(policy=active_policy, image_name=docker_image)
         if docker_sb.is_available():
             return docker_sb
-        # Fallback to local restricted sandbox if docker is unavailable
+        logger.warning(
+            "Docker sandbox was requested, but the Docker daemon is not available or running. "
+            "Falling back to LocalRestrictedSandbox (host execution with environment variable scrubbing)."
+        )
         return LocalRestrictedSandbox(policy=active_policy)
 
     elif mode_lower == "disabled":

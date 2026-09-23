@@ -20,6 +20,7 @@ from terminal_agent.llm.message import Message
 from terminal_agent.sandbox.base import SandboxBackend, SandboxPolicy, SandboxResult
 from terminal_agent.sandbox.local import LocalRestrictedSandbox
 from terminal_agent.tools.search_replace import _search_replace_sync
+from terminal_agent.utils.prompt_loader import load_prompt
 
 
 @dataclass
@@ -102,15 +103,11 @@ class AgentlessFastPath:
 
         content = full_path.read_text(encoding="utf-8", errors="ignore")
         
-        # Build surgical prompt
-        prompt = (
-            f"You are an expert software engineer operating in fast-path surgical repair mode.\n"
-            f"Task: {task_description}\n"
-            f"Target file: {rel_path}\n\n"
-            f"File content:\n```python\n{content}\n```\n\n"
-            f"Provide the exact search block and replacement block to resolve the task.\n"
-            f"Respond ONLY with a JSON object in this exact format:\n"
-            f'{{\n  "search": "exact lines to replace",\n  "replace": "new lines to insert"\n}}'
+        prompt = load_prompt(
+            "fast_path_repair",
+            task_description=task_description,
+            rel_path=rel_path,
+            file_content=content,
         )
 
         response = await self.provider.send(messages=[Message.user(prompt)])

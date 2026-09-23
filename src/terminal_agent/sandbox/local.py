@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
-from terminal_agent.sandbox.base import SandboxBackend, SandboxPolicy, SandboxResult
+from terminal_agent.sandbox.base import (
+    SandboxBackend,
+    SandboxPolicy,
+    SandboxResult,
+    is_network_command,
+)
 from terminal_agent.tools.base import resolve_safe_path
 
 
@@ -62,7 +69,17 @@ class LocalRestrictedSandbox(SandboxBackend):
         start_time = time.perf_counter()
         effective_timeout = timeout or self.policy.timeout_seconds
 
-        # 1. Enforce CWD boundary: must resolve inside working_dir
+        # 1. Enforce network policy
+        if not self.policy.allow_network and is_network_command(command):
+            return SandboxResult(
+                stdout="",
+                stderr=f"Security violation: Outbound network access is disabled in this sandbox: '{command}'",
+                returncode=1,
+                duration_seconds=0.0,
+                timed_out=False,
+            )
+
+        # 2. Enforce CWD boundary: must resolve inside working_dir
         target_cwd = cwd if cwd is not None else self.policy.working_dir
         safe_cwd, err = resolve_safe_path(target_cwd, base_dir=self.policy.working_dir)
         if safe_cwd is None:
@@ -83,17 +100,38 @@ class LocalRestrictedSandbox(SandboxBackend):
                 timed_out=False,
             )
 
-        # 2. Scrub environment variables: strip all API keys and secrets
+        # 3. Build ephemeral workspace if policy requires it
+        temp_clone_dir: tempfile.TemporaryDirectory | None = None
+        run_cwd = safe_cwd
+        if self.policy.ephemeral:
+            temp_clone_dir = tempfile.TemporaryDirectory(prefix="agent_local_ephemeral_")
+            clone_path = Path(temp_clone_dir.name)
+            try:
+                shutil.copytree(
+                    self.policy.working_dir,
+                    clone_path,
+                    dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns(".git", "__pycache__", ".venv", "node_modules"),
+                )
+                try:
+                    rel_sub = safe_cwd.relative_to(self.policy.working_dir)
+                    run_cwd = clone_path / rel_sub
+                except Exception:
+                    run_cwd = clone_path
+            except Exception:
+                run_cwd = safe_cwd
+
+        # 4. Scrub environment variables: strip all API keys and secrets
         clean_env = self.policy.sanitize_environment()
 
-        # 3. Launch subprocess asynchronously with DEVNULL stdin
+        # 5. Launch subprocess asynchronously with DEVNULL stdin
         try:
             process = await asyncio.create_subprocess_shell(
                 command,
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=str(safe_cwd),
+                cwd=str(run_cwd),
                 env=clean_env,
             )
             self._current_process = process
@@ -152,3 +190,9 @@ class LocalRestrictedSandbox(SandboxBackend):
                 duration_seconds=round(duration, 2),
                 timed_out=False,
             )
+        finally:
+            if temp_clone_dir is not None:
+                try:
+                    temp_clone_dir.cleanup()
+                except Exception:
+                    pass

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -27,17 +28,39 @@ class DockerSandbox(SandboxBackend):
     def name(self) -> str:
         return "docker"
 
+    @staticmethod
+    def _find_docker_executable() -> str | None:
+        """Find docker executable from PATH or common install directories."""
+        found = shutil.which("docker")
+        if found:
+            return found
+
+        import os
+        candidates = [
+            # Windows Docker Desktop per-user and system installs
+            Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "DockerDesktop" / "resources" / "bin" / "docker.exe",
+            Path(os.environ.get("ProgramFiles", "C:\\Program Files")) / "Docker" / "Docker" / "resources" / "bin" / "docker.exe",
+            Path("C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe"),
+            # Unix standard paths
+            Path("/usr/bin/docker"),
+            Path("/usr/local/bin/docker"),
+        ]
+        for candidate in candidates:
+            if candidate.exists() and candidate.is_file():
+                return str(candidate)
+        return None
+
     def is_available(self) -> bool:
         """Check if Docker CLI is installed and the Docker daemon is responding."""
-        docker_bin = shutil.which("docker")
+        docker_bin = self._find_docker_executable()
         if not docker_bin:
             return False
         try:
             res = subprocess.run(
-                ["docker", "info"],
+                [docker_bin, "info"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                timeout=3,
+                timeout=5,
                 check=False,
             )
             return res.returncode == 0
@@ -72,13 +95,32 @@ class DockerSandbox(SandboxBackend):
                 duration_seconds=0.0,
             )
 
-        # 2. Build Docker CLI command
+        # 2. Build workspace mount: if ephemeral, copy to tempdir so host files are never mutated/deleted
+        temp_clone_dir: tempfile.TemporaryDirectory | None = None
+        effective_mount_dir = self.policy.working_dir
+
+        if self.policy.ephemeral:
+            temp_clone_dir = tempfile.TemporaryDirectory(prefix="agent_ephemeral_")
+            effective_mount_dir = Path(temp_clone_dir.name)
+            try:
+                shutil.copytree(
+                    self.policy.working_dir,
+                    effective_mount_dir,
+                    dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns(".git", "__pycache__", ".venv", "node_modules"),
+                )
+            except Exception:
+                pass
+
+        # 3. Build Docker CLI command
+        docker_bin = self._find_docker_executable() or "docker"
         docker_args = [
-            "docker", "run", "--rm",
-            "-v", f"{self.policy.working_dir!s}:/workspace:rw",
+            docker_bin, "run", "--rm",
+            "-v", f"{effective_mount_dir!s}:/workspace:rw",
             "-w", "/workspace",
             "--memory=1g",
             "--cpus=1.0",
+            "--pids-limit=100",
         ]
 
         if not self.policy.allow_network:
@@ -95,12 +137,21 @@ class DockerSandbox(SandboxBackend):
             "sh", "-c", command,
         ])
 
+        # Prepare host execution environment so docker finds helper tools (docker-credential-desktop, etc.)
+        import os
+        host_env = dict(os.environ)
+        docker_parent = str(Path(docker_bin).parent)
+        current_path = host_env.get("PATH", "")
+        if docker_parent not in current_path:
+            host_env["PATH"] = f"{docker_parent};{current_path}" if os.name == "nt" else f"{docker_parent}:{current_path}"
+
         try:
             process = await asyncio.create_subprocess_exec(
                 *docker_args,
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=host_env,
             )
 
             try:
@@ -152,3 +203,9 @@ class DockerSandbox(SandboxBackend):
                 returncode=1,
                 duration_seconds=round(duration, 2),
             )
+        finally:
+            if temp_clone_dir is not None:
+                try:
+                    temp_clone_dir.cleanup()
+                except Exception:
+                    pass

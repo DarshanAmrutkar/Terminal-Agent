@@ -149,6 +149,10 @@ class AgentConfig(BaseSettings):
         default="python:3.12-slim",
         description="Docker container image for docker sandbox mode",
     )
+    sandbox_ephemeral: bool = Field(
+        default=False,
+        description="Run commands in an ephemeral copy-on-write workspace to prevent destructive modifications to host files",
+    )
 
     # --- API Keys (loaded from standard env var names, not AGENT_ prefix) ---
     anthropic_api_key: str | None = Field(default=None)
